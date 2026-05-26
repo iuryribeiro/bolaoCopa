@@ -1,0 +1,37 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="trophy" x1="0" y1="0" x2="0" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo -->
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+
+  <!-- Copa do troféu -->
+  <path d="M176 96h160v112c0 53 -35.8 96 -80 96s-80-43-80-96V96z" fill="url(#trophy)"/>
+
+  <!-- Alça esquerda -->
+  <path d="M176 128H128a32 32 0 000 64h48" stroke="#f59e0b" stroke-width="20" stroke-linecap="round" fill="none"/>
+  <!-- Alça direita -->
+  <path d="M336 128h48a32 32 0 010 64h-48" stroke="#f59e0b" stroke-width="20" stroke-linecap="round" fill="none"/>
+
+  <!-- Pescoço -->
+  <rect x="232" y="304" width="48" height="56" rx="8" fill="#f59e0b"/>
+
+  <!-- Base 1 -->
+  <rect x="176" y="360" width="160" height="28" rx="14" fill="#f59e0b"/>
+  <!-- Base 2 (mais larga) -->
+  <rect x="152" y="388" width="208" height="28" rx="14" fill="#fbbf24"/>
+
+  <!-- Brilho na copa -->
+  <path d="M208 120 Q224 110 248 112" stroke="#fef9c3" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.55"/>
+
+  <!-- Estrela acima -->
+  <path d="M256 52 L261 67h16l-13 9.5 5 15-13-9.5-13 9.5 5-15-13-9.5h16z" fill="#fde68a" opacity="0.9"/>
+</svg>
