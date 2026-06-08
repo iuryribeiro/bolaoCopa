@@ -46,12 +46,15 @@ interface Section {
   matches: Match[]
 }
 
+type PredFilter = '' | 'predicted' | 'unpredicted'
+
 export default function JogosPage() {
   const [allMatches, setAllMatches] = useState<Match[]>([])
   const [predictions, setPredictions] = useState<Map<string, Prediction>>(new Map())
   const [loading, setLoading] = useState(true)
   const [stage, setStage] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [predFilter, setPredFilter] = useState<PredFilter>('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
@@ -80,7 +83,7 @@ export default function JogosPage() {
     fetchData()
   }, [])
 
-  useEffect(() => { setPage(1) }, [stage, statusFilter, search])
+  useEffect(() => { setPage(1) }, [stage, statusFilter, predFilter, search])
 
   const filtered = useMemo(() => {
     const now = new Date()
@@ -96,6 +99,9 @@ export default function JogosPage() {
         if (new Date(match.match_date) <= now) return false
       }
 
+      if (predFilter === 'predicted' && !predictions.has(match.id)) return false
+      if (predFilter === 'unpredicted' && predictions.has(match.id)) return false
+
       if (search.trim()) {
         const q = search.toLowerCase()
         const home = translateTeamName(match.home_team_name).toLowerCase()
@@ -107,7 +113,7 @@ export default function JogosPage() {
 
       return true
     })
-  }, [allMatches, stage, statusFilter, search])
+  }, [allMatches, stage, statusFilter, predFilter, search, predictions])
 
   // Build sections for the grouped view
   const sections = useMemo<Section[]>(() => {
@@ -176,7 +182,7 @@ export default function JogosPage() {
     : []
 
   const totalPages = usePaginatedList ? totalMatchPages : totalSectionPages
-  const hasActiveFilters = stage || statusFilter || search.trim()
+  const hasActiveFilters = stage || statusFilter || predFilter || search.trim()
 
   function PaginationBar() {
     if (totalPages <= 1) return null
@@ -298,6 +304,42 @@ export default function JogosPage() {
 
       </div>
 
+      {/* Filtro de palpites */}
+      {!loading && (
+        <div className="flex gap-2">
+          {(
+            [
+              { value: '' as PredFilter,           label: 'Todos',       count: allMatches.length },
+              { value: 'predicted' as PredFilter,   label: 'Palpitados',  count: allMatches.filter(m => predictions.has(m.id)).length },
+              { value: 'unpredicted' as PredFilter, label: 'Sem palpite', count: allMatches.filter(m => !predictions.has(m.id)).length },
+            ] as const
+          ).map(f => (
+            <button
+              key={f.value}
+              onClick={() => setPredFilter(f.value)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border',
+                predFilter === f.value
+                  ? f.value === 'predicted'
+                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                    : f.value === 'unpredicted'
+                      ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                  : 'bg-white/5 text-gray-400 hover:text-white border-white/10'
+              )}
+            >
+              {f.label}
+              <span className={cn(
+                'text-[10px] px-1.5 py-0.5 rounded-full',
+                predFilter === f.value ? 'bg-white/20' : 'bg-white/10 text-gray-500'
+              )}>
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Filtros de fase */}
       <div className="relative">
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-[#060a0f] to-transparent" />
@@ -329,7 +371,7 @@ export default function JogosPage() {
           </p>
           {hasActiveFilters && (
             <button
-              onClick={() => { setStage(''); setStatusFilter(''); setSearch('') }}
+              onClick={() => { setStage(''); setStatusFilter(''); setPredFilter(''); setSearch('') }}
               className="mt-3 text-sm text-emerald-400 hover:text-emerald-300"
             >
               Limpar filtros

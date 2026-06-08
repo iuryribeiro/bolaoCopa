@@ -72,3 +72,7 @@ logs/
 .DS_Store
 ehthumbs.db
 Desktop.ini
+
+# Claude Code
+claude.exe
+.claude/

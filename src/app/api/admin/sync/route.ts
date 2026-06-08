@@ -135,6 +135,7 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Erro na sincronização'
+    console.error('[SYNC ERROR]', error)
     const isRateLimit = msg.includes('RATE_LIMIT') || msg.includes('Limite diário')
     return NextResponse.json({ error: msg }, { status: isRateLimit ? 429 : 500 })
   }

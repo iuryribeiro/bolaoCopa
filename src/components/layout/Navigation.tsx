@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Calendar, Star, Trophy, Users, GitBranch,
-  Swords, Settings, LogOut, Medal
+  LayoutDashboard, Calendar, Star, Trophy, Eye, GitBranch,
+  Swords, Settings, LogOut, Medal, TrendingUp
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -19,7 +19,8 @@ const navItems = [
   { href: '/jogos',         icon: Calendar,        label: 'Jogos',        mobileLabel: 'Jogos'     },
   { href: '/meus-palpites', icon: Star,            label: 'Meus Palpites',mobileLabel: 'Palpites'  },
   { href: '/ranking',       icon: Trophy,          label: 'Ranking',      mobileLabel: 'Ranking'   },
-  { href: '/classificados', icon: Users,           label: 'Classificados',mobileLabel: 'Grupos'    },
+  { href: '/classificados',  icon: TrendingUp,      label: 'Classificados',   mobileLabel: 'Grupos'  },
+  { href: '/galera',         icon: Eye,             label: 'Palpites Galera', mobileLabel: 'Galera'  },
   { href: '/mata-mata',     icon: GitBranch,       label: 'Mata-mata',    mobileLabel: 'Mata-mata' },
   { href: '/artilheiros',   icon: Swords,          label: 'Artilheiros',  mobileLabel: 'Gols'      },
   { href: '/premiacao',     icon: Medal,           label: 'Premiação',    mobileLabel: 'Prêmio'   },
