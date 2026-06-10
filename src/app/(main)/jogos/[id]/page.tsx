@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { PredictionForm } from '@/components/matches/PredictionForm'
 import { Badge } from '@/components/ui/Badge'
@@ -10,7 +11,7 @@ import {
   getGroupLabel, isMatchLive, isMatchFinished
 } from '@/lib/utils'
 import { translateTeamName } from '@/lib/team-names'
-import { MapPin, Clock, Users } from 'lucide-react'
+import { MapPin, Clock, Users, ChevronLeft, ChevronRight, LayoutList } from 'lucide-react'
 import type { Prediction } from '@/types'
 
 export const revalidate = 30
@@ -35,6 +36,25 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
   const allPredictions: (Prediction & { user: { name: string; avatar_url: string | null } })[] = allPredictionsResult.data || []
   const myPrediction = myPredResult.data
 
+  // Adjacent matches for navigation
+  const [prevResult, nextResult] = await Promise.all([
+    supabase.from('matches')
+      .select('id, home_team_name, away_team_name, home_team_logo, away_team_logo')
+      .lt('match_date', match.match_date)
+      .order('match_date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from('matches')
+      .select('id, home_team_name, away_team_name, home_team_logo, away_team_logo')
+      .gt('match_date', match.match_date)
+      .order('match_date', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const prevMatch = prevResult.data
+  const nextMatch = nextResult.data
+
   const live = isMatchLive(match.status)
   const finished = isMatchFinished(match.status)
   const hasScore = match.home_score !== null
@@ -43,6 +63,64 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
+
+      {/* Match Navigation */}
+      <div className="flex items-center justify-between gap-2">
+        {prevMatch ? (
+          <Link
+            href={`/jogos/${prevMatch.id}`}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-colors py-1.5 group min-w-0"
+          >
+            <ChevronLeft className="w-4 h-4 shrink-0 group-hover:-translate-x-0.5 transition-transform" />
+            <div className="flex items-center gap-1.5 min-w-0 hidden sm:flex">
+              {prevMatch.home_team_logo && (
+                <Image src={prevMatch.home_team_logo} alt="" width={16} height={16} className="object-contain shrink-0" />
+              )}
+              <span className="truncate max-w-[90px]">{translateTeamName(prevMatch.home_team_name)}</span>
+              <span className="text-gray-700">×</span>
+              <span className="truncate max-w-[90px]">{translateTeamName(prevMatch.away_team_name)}</span>
+              {prevMatch.away_team_logo && (
+                <Image src={prevMatch.away_team_logo} alt="" width={16} height={16} className="object-contain shrink-0" />
+              )}
+            </div>
+            <span className="sm:hidden">Anterior</span>
+          </Link>
+        ) : (
+          <div />
+        )}
+
+        <Link
+          href="/jogos"
+          className="text-xs text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1 shrink-0"
+        >
+          <LayoutList className="w-3 h-3" />
+          <span>Jogos</span>
+        </Link>
+
+        {nextMatch ? (
+          <Link
+            href={`/jogos/${nextMatch.id}`}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-white transition-colors py-1.5 group min-w-0"
+          >
+            <div className="flex items-center gap-1.5 min-w-0 hidden sm:flex">
+              {nextMatch.home_team_logo && (
+                <Image src={nextMatch.home_team_logo} alt="" width={16} height={16} className="object-contain shrink-0" />
+              )}
+              <span className="truncate max-w-[90px]">{translateTeamName(nextMatch.home_team_name)}</span>
+              <span className="text-gray-700">×</span>
+              <span className="truncate max-w-[90px]">{translateTeamName(nextMatch.away_team_name)}</span>
+              {nextMatch.away_team_logo && (
+                <Image src={nextMatch.away_team_logo} alt="" width={16} height={16} className="object-contain shrink-0" />
+              )}
+            </div>
+            <span className="sm:hidden">Próximo</span>
+            <ChevronRight className="w-4 h-4 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+        ) : (
+          <div />
+        )}
+      </div>
+
       {/* Match Header */}
       <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
         {/* Status */}
@@ -185,6 +263,7 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
           </CardContent>
         </Card>
       )}
+
     </div>
   )
 }

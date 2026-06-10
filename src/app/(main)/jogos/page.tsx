@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { MatchCard } from '@/components/matches/MatchCard'
+import { PredictionModal } from '@/components/matches/PredictionModal'
 import { LoadingSpinner } from '@/components/ui/Loading'
 import { Calendar, Search, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { cn, getStageLabel, getGroupLabel } from '@/lib/utils'
@@ -57,6 +58,7 @@ export default function JogosPage() {
   const [predFilter, setPredFilter] = useState<PredFilter>('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -246,6 +248,15 @@ export default function JogosPage() {
 
   return (
     <div className="space-y-5">
+      {activeMatchId && (
+        <PredictionModal
+          matches={allMatches}
+          predictions={predictions}
+          initialMatchId={activeMatchId}
+          onClose={() => setActiveMatchId(null)}
+          onSave={pred => setPredictions(prev => new Map(prev).set(pred.match_id, pred))}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center gap-3">
         <Calendar className="w-6 h-6 text-blue-400" />
@@ -387,6 +398,7 @@ export default function JogosPage() {
                 key={match.id}
                 match={match}
                 prediction={predictions.get(match.id)}
+                onPalpitar={() => setActiveMatchId(match.id)}
               />
             ))}
           </div>
