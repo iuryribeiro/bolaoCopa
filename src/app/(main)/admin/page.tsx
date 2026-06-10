@@ -26,6 +26,7 @@ interface CompetitionSettings {
   knockout_prediction_locked: boolean
   champion_prediction_locked: boolean
   top_scorer_prediction_locked: boolean
+  entry_fee: number | null
 }
 
 interface ScoringRules {
@@ -63,6 +64,11 @@ export default function AdminPage() {
   const [rules, setRules] = useState<ScoringRules | null>(null)
   const [savingRules, setSavingRules] = useState(false)
   const [participants, setParticipants] = useState<Array<{ user_id: string; name: string; avatar_url: string | null; total_points: number; payment_confirmed: boolean }>>([])
+  const [togglingPayment, setTogglingPayment] = useState<string | null>(null)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [migrationNeeded, setMigrationNeeded] = useState(false)
+  const [entryFee, setEntryFee] = useState<number>(100)
+  const [savingEntryFee, setSavingEntryFee] = useState(false)
   const [notifTitle, setNotifTitle] = useState('')
   const [notifBody, setNotifBody] = useState('')
   const [notifUrl, setNotifUrl] = useState('')
@@ -79,36 +85,83 @@ export default function AdminPage() {
   const fetchData = async () => {
     try {
       const [logsRes, settingsRes, usageRes, paymentsRes] = await Promise.all([
-        fetch('/api/admin/logs'),
-        fetch('/api/admin/settings'),
-        fetch('/api/admin/usage'),
-        fetch('/api/admin/payments'),
+        fetch('/api/admin/logs').catch(() => null),
+        fetch('/api/admin/settings').catch(() => null),
+        fetch('/api/admin/usage').catch(() => null),
+        fetch('/api/admin/payments').catch(() => null),
       ])
-      const logsData = await logsRes.json()
-      const settingsData = await settingsRes.json()
-      const usageData = await usageRes.json()
-      const paymentsData = await paymentsRes.json()
 
-      setLogs(logsData.logs || [])
-      setSettings(settingsData.settings)
-      setRules(settingsData.rules)
-      setUsage(usageData.usage)
-      setUsageHistory(usageData.history || [])
-      setParticipants(paymentsData.participants || [])
+      if (logsRes?.ok) {
+        const d = await logsRes.json().catch(() => ({}))
+        setLogs(d.logs || [])
+      }
+
+      if (settingsRes?.ok) {
+        const d = await settingsRes.json().catch(() => ({}))
+        setSettings(d.settings ?? null)
+        setRules(d.rules ?? null)
+        if (d.settings?.entry_fee != null) setEntryFee(d.settings.entry_fee)
+      }
+
+      if (usageRes?.ok) {
+        const d = await usageRes.json().catch(() => ({}))
+        setUsage(d.usage ?? null)
+        setUsageHistory(d.history || [])
+      }
+
+      if (paymentsRes) {
+        const d = await paymentsRes.json().catch(() => ({}))
+        setParticipants(d.participants || [])
+        setMigrationNeeded(!!d.migration_needed)
+        if (d.error && !(d.participants?.length)) setPaymentError(d.error)
+      }
     } finally {
       setLoading(false)
     }
   }
 
   const togglePayment = async (userId: string, current: boolean) => {
+    setTogglingPayment(userId)
+    setPaymentError(null)
+    // Optimistic update
     setParticipants(prev =>
       prev.map(p => p.user_id === userId ? { ...p, payment_confirmed: !current } : p)
     )
-    await fetch('/api/admin/payments', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, payment_confirmed: !current }),
-    })
+    try {
+      const res = await fetch('/api/admin/payments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, payment_confirmed: !current }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erro ${res.status}`)
+      }
+    } catch (err) {
+      // Revert on error
+      setParticipants(prev =>
+        prev.map(p => p.user_id === userId ? { ...p, payment_confirmed: current } : p)
+      )
+      setPaymentError(err instanceof Error ? err.message : 'Erro ao atualizar pagamento')
+    } finally {
+      setTogglingPayment(null)
+    }
+  }
+
+  const handleSaveEntryFee = async () => {
+    setSavingEntryFee(true)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entry_fee: entryFee }),
+      })
+      if (!res.ok) throw new Error('Erro ao salvar')
+      const data = await res.json()
+      if (data.settings?.entry_fee != null) setEntryFee(data.settings.entry_fee)
+    } finally {
+      setSavingEntryFee(false)
+    }
   }
 
   const handleSync = async (type: string) => {
@@ -472,7 +525,7 @@ export default function AdminPage() {
       {/* Confirmação de pagamentos */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-emerald-400" />
               <h2 className="text-sm font-semibold text-white">Confirmação de Pagamentos</h2>
@@ -484,9 +537,61 @@ export default function AdminPage() {
             </div>
           </div>
         </CardHeader>
+
+        {/* Valor do bolão */}
+        <div className="px-4 pb-3 flex items-center gap-3 border-b border-white/10">
+          <label className="text-sm text-gray-300 shrink-0">Valor por participante (R$)</label>
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">R$</span>
+              <input
+                type="number"
+                min={0}
+                step={5}
+                value={entryFee}
+                onChange={e => setEntryFee(parseInt(e.target.value) || 0)}
+                className="w-24 bg-white/5 border border-white/10 rounded-lg pl-8 pr-2 py-1.5 text-white text-sm text-right focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSaveEntryFee}
+              loading={savingEntryFee}
+            >
+              Salvar
+            </Button>
+          </div>
+        </div>
+
+        {paymentError && (
+          <div className="mx-4 mt-3 flex items-center gap-2 text-red-400 text-xs p-2.5 bg-red-500/10 rounded-lg border border-red-500/20">
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+            {paymentError}
+          </div>
+        )}
+
+        {migrationNeeded && (
+          <div className="mx-4 mt-3 flex items-start gap-2 text-yellow-400 text-xs p-2.5 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>
+              Coluna <code className="font-mono bg-yellow-500/20 px-1 rounded">payment_confirmed</code> não existe ainda.
+              Execute <code className="font-mono bg-yellow-500/20 px-1 rounded">supabase/add_payment_confirmed.sql</code> no Supabase para habilitar confirmação de pagamentos.
+            </span>
+          </div>
+        )}
+
         <CardContent className="p-0">
           {participants.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">Nenhum participante cadastrado</div>
+            <div className="p-6 text-center space-y-1">
+              <p className="text-gray-400 text-sm font-medium">Nenhum participante encontrado</p>
+              <p className="text-gray-600 text-xs">
+                {loading ? 'Carregando…' : 'Nenhum usuário cadastrado ainda ou erro ao carregar.'}
+              </p>
+              <button onClick={fetchData} className="mt-2 text-xs text-emerald-400 hover:text-emerald-300 underline underline-offset-2">
+                Tentar novamente
+              </button>
+            </div>
           ) : (
             <div className="divide-y divide-white/5">
               {participants.map(p => (
@@ -497,26 +602,34 @@ export default function AdminPage() {
                   </div>
                   <button
                     onClick={() => togglePayment(p.user_id, p.payment_confirmed)}
+                    disabled={togglingPayment === p.user_id}
                     className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
-                      p.payment_confirmed
-                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        : 'bg-white/5 text-gray-400 border-white/10 hover:border-emerald-500/30 hover:text-emerald-400'
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border min-w-[90px] justify-center',
+                      togglingPayment === p.user_id
+                        ? 'opacity-50 cursor-not-allowed bg-white/5 text-gray-400 border-white/10'
+                        : p.payment_confirmed
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25'
+                          : 'bg-white/5 text-gray-400 border-white/10 hover:border-orange-500/40 hover:text-orange-400'
                     )}
                   >
-                    {p.payment_confirmed
-                      ? <><CheckCircle className="w-3 h-3" /> Pago</>
-                      : <><DollarSign className="w-3 h-3" /> Pendente</>
-                    }
+                    {togglingPayment === p.user_id ? (
+                      <span className="inline-block w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                    ) : p.payment_confirmed ? (
+                      <><CheckCircle className="w-3 h-3" /> Pago</>
+                    ) : (
+                      <><Clock className="w-3 h-3" /> Pendente</>
+                    )}
                   </button>
                 </div>
               ))}
             </div>
           )}
           <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between">
-            <span className="text-xs text-gray-500">R$ 100 por participante</span>
+            <span className="text-xs text-gray-500">
+              {participants.filter(p => p.payment_confirmed).length} × R$ {entryFee.toLocaleString('pt-BR')}
+            </span>
             <span className="text-sm font-bold text-emerald-400">
-              Total: R$ {(participants.filter(p => p.payment_confirmed).length * 100).toLocaleString('pt-BR')}
+              Total: R$ {(participants.filter(p => p.payment_confirmed).length * entryFee).toLocaleString('pt-BR')}
             </span>
           </div>
         </CardContent>
