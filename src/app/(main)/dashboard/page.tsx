@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Trophy, Calendar, Star, TrendingUp, Bell } from 'lucide-react'
 import Link from 'next/link'
 import { isMatchLive, isMatchFinished, formatMatchDate } from '@/lib/utils'
+import { LiveRefresher } from '@/components/LiveRefresher'
 import type { Match, Prediction, RankingEntry } from '@/types'
 
 export const revalidate = 60
@@ -171,9 +172,12 @@ export default async function DashboardPage() {
           {/* Live matches */}
           {live.length > 0 && (
             <section>
-              <div className="flex items-center gap-2 mb-3">
-                <Badge variant="live">AO VIVO</Badge>
-                <h2 className="text-sm font-semibold text-white">Agora</h2>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="live">AO VIVO</Badge>
+                  <h2 className="text-sm font-semibold text-white">Agora</h2>
+                </div>
+                <LiveRefresher intervalSeconds={30} active={true} />
               </div>
               <div className="space-y-3">
                 {live.map((match: Match) => (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { MatchCard } from '@/components/matches/MatchCard'
 import { PredictionModal } from '@/components/matches/PredictionModal'
 import { LoadingSpinner } from '@/components/ui/Loading'
@@ -60,30 +60,37 @@ export default function JogosPage() {
   const [page, setPage] = useState(1)
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      try {
-        const [matchesRes, predsRes] = await Promise.all([
-          fetch('/api/football/matches?limit=200'),
-          fetch('/api/predictions'),
-        ])
-        const matchesData = await matchesRes.json()
-        const predsData = await predsRes.json()
+  const fetchData = useCallback(async (initial = false) => {
+    if (initial) setLoading(true)
+    try {
+      const [matchesRes, predsRes] = await Promise.all([
+        fetch('/api/football/matches?limit=200'),
+        fetch('/api/predictions'),
+      ])
+      const matchesData = await matchesRes.json()
+      const predsData = await predsRes.json()
 
-        setAllMatches(matchesData.matches || [])
-        const predMap = new Map<string, Prediction>(
-          (predsData.predictions || []).map((p: Prediction) => [p.match_id, p] as [string, Prediction])
-        )
-        setPredictions(predMap)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
+      setAllMatches(matchesData.matches || [])
+      const predMap = new Map<string, Prediction>(
+        (predsData.predictions || []).map((p: Prediction) => [p.match_id, p] as [string, Prediction])
+      )
+      setPredictions(predMap)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      if (initial) setLoading(false)
     }
-    fetchData()
   }, [])
+
+  useEffect(() => { fetchData(true) }, [fetchData])
+
+  // Auto-poll every 60s when there are live matches
+  const hasLive = allMatches.some(m => ['1H', 'HT', '2H', 'ET', 'P', 'BT'].includes(m.status))
+  useEffect(() => {
+    if (!hasLive) return
+    const id = setInterval(() => fetchData(false), 60_000)
+    return () => clearInterval(id)
+  }, [hasLive, fetchData])
 
   useEffect(() => { setPage(1) }, [stage, statusFilter, predFilter, search])
 
@@ -258,16 +265,24 @@ export default function JogosPage() {
         />
       )}
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Calendar className="w-6 h-6 text-blue-400" />
-        <div>
-          <h1 className="text-2xl font-bold text-white">Jogos</h1>
-          {!loading && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              {filtered.length} de {allMatches.length} jogos
-            </p>
-          )}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Calendar className="w-6 h-6 text-blue-400" />
+          <div>
+            <h1 className="text-2xl font-bold text-white">Jogos</h1>
+            {!loading && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {filtered.length} de {allMatches.length} jogos
+              </p>
+            )}
+          </div>
         </div>
+        {hasLive && (
+          <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Atualizando automaticamente
+          </div>
+        )}
       </div>
 
       {/* Busca */}
@@ -425,6 +440,7 @@ export default function JogosPage() {
                     key={match.id}
                     match={match}
                     prediction={predictions.get(match.id)}
+                    onPalpitar={() => setActiveMatchId(match.id)}
                   />
                 ))}
               </div>
