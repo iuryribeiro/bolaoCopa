@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { format, formatDistanceToNow, isAfter, isBefore, addHours } from 'date-fns'
+import { formatDistanceToNow, isAfter, addHours } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { Match, MatchStatus } from '@/types'
 
@@ -8,12 +8,25 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+function brtParts(dateStr: string) {
+  const date = new Date(dateStr)
+  const parts: Record<string, string> = {}
+  new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', weekday: 'long',
+    timeZone: 'America/Sao_Paulo', hour12: false,
+  }).formatToParts(date).forEach(({ type, value }) => { parts[type] = value })
+  return parts
+}
+
 export function formatMatchDate(dateStr: string): string {
-  return format(new Date(dateStr), "dd/MM 'às' HH:mm", { locale: ptBR })
+  const p = brtParts(dateStr)
+  return `${p.day}/${p.month} às ${p.hour}:${p.minute}`
 }
 
 export function formatFullDate(dateStr: string): string {
-  return format(new Date(dateStr), "EEEE, dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })
+  const p = brtParts(dateStr)
+  return `${p.weekday}, ${p.day} de ${p.month} de ${p.year} às ${p.hour}:${p.minute}`
 }
 
 export function formatRelativeTime(dateStr: string): string {
