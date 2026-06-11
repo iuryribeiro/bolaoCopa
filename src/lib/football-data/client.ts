@@ -67,13 +67,14 @@ export const footballData = {
     )
   },
 
-  // Jogos ao vivo — cache 2min
+  // Jogos ao vivo — busca TODOS os jogos sem filtro de status (free tier compatível)
+  // O cache de 2min garante dados frescos sem estourar a cota
   async getLiveMatches(): Promise<{ data: FDMatch[]; fromCache: boolean }> {
     return fetchWithCache(
       `fd:matches:live:${COMPETITION}`,
       CACHE_TTL.LIVE,
       async () => {
-        const res = await fdFetch<FDMatchesResponse>(`/competitions/${COMPETITION}/matches`, { status: 'IN_PLAY,PAUSED,EXTRA_TIME,PENALTY_SHOOTOUT' })
+        const res = await fdFetch<FDMatchesResponse>(`/competitions/${COMPETITION}/matches`)
         return res.matches
       }
     )

@@ -3,18 +3,19 @@ import type { Match, MatchStatus, Stage } from '@/types'
 
 export function mapFDStatus(status: FDMatchStatus): MatchStatus {
   switch (status) {
-    case 'IN_PLAY':         return '1H'
-    case 'PAUSED':          return 'HT'
-    case 'EXTRA_TIME':      return 'ET'
+    case 'LIVE':
+    case 'IN_PLAY':          return '1H'
+    case 'PAUSED':           return 'HT'
+    case 'EXTRA_TIME':       return 'ET'
     case 'PENALTY_SHOOTOUT': return 'P'
-    case 'FINISHED':        return 'FT'
-    case 'AWARDED':         return 'AWD'
-    case 'SUSPENDED':       return 'SUSP'
-    case 'POSTPONED':       return 'PST'
-    case 'CANCELLED':       return 'CANC'
+    case 'FINISHED':         return 'FT'
+    case 'AWARDED':          return 'AWD'
+    case 'SUSPENDED':        return 'SUSP'
+    case 'POSTPONED':        return 'PST'
+    case 'CANCELLED':        return 'CANC'
     case 'SCHEDULED':
     case 'TIMED':
-    default:                return 'NS'
+    default:                 return 'NS'
   }
 }
 
@@ -41,15 +42,17 @@ export function mapFDMatchToSupabase(match: FDMatch) {
   const status = mapFDStatus(match.status)
   const isFinished = ['FT', 'AET', 'PEN', 'AWD'].includes(status)
 
+  const isLiveNow = ['LIVE', 'IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT'].includes(match.status)
+
   const homeScore = isFinished
     ? match.score.fullTime.home
-    : match.status === 'IN_PLAY' || match.status === 'PAUSED'
+    : isLiveNow
       ? match.score.fullTime.home ?? match.score.halfTime.home
       : null
 
   const awayScore = isFinished
     ? match.score.fullTime.away
-    : match.status === 'IN_PLAY' || match.status === 'PAUSED'
+    : isLiveNow
       ? match.score.fullTime.away ?? match.score.halfTime.away
       : null
 

@@ -5,22 +5,19 @@ import { useRouter } from 'next/navigation'
 import { RefreshCw } from 'lucide-react'
 
 interface LiveRefresherProps {
-  /** Intervalo em segundos. Padrão: 60s */
   intervalSeconds?: number
-  /** Só faz polling quando true (ex: há jogo ao vivo) */
   active?: boolean
 }
 
 export function LiveRefresher({ intervalSeconds = 60, active = true }: LiveRefresherProps) {
   const router = useRouter()
-  const [lastUpdate, setLastUpdate] = useState(0)  // segundos atrás
+  const [lastUpdate, setLastUpdate] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const nextRefreshRef = useRef(intervalSeconds)
 
   useEffect(() => {
     if (!active) return
 
-    // Countdown tick a cada segundo
     const ticker = setInterval(() => {
       setLastUpdate(prev => prev + 1)
       nextRefreshRef.current -= 1
@@ -28,9 +25,12 @@ export function LiveRefresher({ intervalSeconds = 60, active = true }: LiveRefre
       if (nextRefreshRef.current <= 0) {
         nextRefreshRef.current = intervalSeconds
         setRefreshing(true)
-        router.refresh()
-        setTimeout(() => setRefreshing(false), 1000)
         setLastUpdate(0)
+        // Sincroniza com API externa antes de atualizar a UI
+        fetch('/api/football/live').finally(() => {
+          router.refresh()
+          setTimeout(() => setRefreshing(false), 1000)
+        })
       }
     }, 1000)
 

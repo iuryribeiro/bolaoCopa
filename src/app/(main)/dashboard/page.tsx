@@ -16,6 +16,8 @@ async function getDashboardData(userId: string) {
   const supabase = await createClient()
   const now = new Date().toISOString()
 
+  const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+
   const [
     liveResult,
     upcomingResult,
@@ -23,6 +25,7 @@ async function getDashboardData(userId: string) {
     rankingResult,
     profileResult,
     pendingResult,
+    potentialLiveResult,
   ] = await Promise.all([
     supabase.from('matches').select('*').in('status', ['1H', 'HT', '2H', 'ET', 'P', 'BT']).order('match_date'),
     supabase.from('matches').select('*').eq('status', 'NS').gte('match_date', now).order('match_date').limit(5),
@@ -30,6 +33,8 @@ async function getDashboardData(userId: string) {
     supabase.from('user_profiles').select('user_id, name, avatar_url, total_points, exact_scores, correct_winners, bonus_points').order('total_points', { ascending: false }).limit(10),
     supabase.from('user_profiles').select('*').eq('user_id', userId).single(),
     supabase.from('matches').select('id, match_date, home_team_name, away_team_name, home_team_logo, away_team_logo').eq('status', 'NS').gte('match_date', now).order('match_date').limit(20),
+    // Jogos NS que deveriam ter começado há até 3h (free tier: ficam como NS durante o jogo)
+    supabase.from('matches').select('id').eq('status', 'NS').gte('match_date', threeHoursAgo).lte('match_date', now).limit(1),
   ])
 
   // Palpites do usuário
@@ -68,6 +73,7 @@ async function getDashboardData(userId: string) {
     profile: profileResult.data,
     predMap,
     pendingCount: pendingPredictions.length,
+    hasPotentialLive: (potentialLiveResult.data?.length ?? 0) > 0,
   }
 }
 
@@ -76,7 +82,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  const { live, upcoming, recent, ranking, profile, predMap, pendingCount } = await getDashboardData(user.id)
+  const { live, upcoming, recent, ranking, profile, predMap, pendingCount, hasPotentialLive } = await getDashboardData(user.id)
 
   // Posição do usuário no ranking
   const myRankPosition = ranking.findIndex(r => r.user_id === user.id) + 1
@@ -166,6 +172,11 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {/* Polling silencioso durante jogos (free tier: status fica NS até terminar) */}
+      {hasPotentialLive && live.length === 0 && (
+        <LiveRefresher intervalSeconds={60} active={true} />
+      )}
+
       <div className="grid lg:grid-cols-3 gap-6 pt-2">
         {/* Left Column */}
         <div className="lg:col-span-2 space-y-6">
@@ -177,7 +188,7 @@ export default async function DashboardPage() {
                   <Badge variant="live">AO VIVO</Badge>
                   <h2 className="text-sm font-semibold text-white">Agora</h2>
                 </div>
-                <LiveRefresher intervalSeconds={30} active={true} />
+                <LiveRefresher intervalSeconds={60} active={true} />
               </div>
               <div className="space-y-3">
                 {live.map((match: Match) => (

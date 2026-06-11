@@ -29,6 +29,8 @@ export function MatchCard({ match, prediction, showPrediction = true, compact = 
   const live = isMatchLive(match.status)
   const finished = isMatchFinished(match.status)
   const locked = isPredictionLocked(match)
+  const shouldBeInProgress = !live && !finished && match.status === 'NS'
+    && new Date(match.match_date) < new Date()
   const homeName = translateTeamName(match.home_team_name)
   const awayName = translateTeamName(match.away_team_name)
   const hasScore = match.home_score !== null && match.away_score !== null
@@ -50,6 +52,8 @@ export function MatchCard({ match, prediction, showPrediction = true, compact = 
             <Badge variant="live">AO VIVO {match.elapsed ? `${match.elapsed}'` : ''}</Badge>
           ) : finished ? (
             <Badge variant="gray">Encerrado</Badge>
+          ) : shouldBeInProgress ? (
+            <Badge variant="live">Em andamento</Badge>
           ) : (
             <span className="text-xs text-gray-400 flex items-center gap-1">
               <Clock className="w-3 h-3" />
@@ -82,7 +86,14 @@ export function MatchCard({ match, prediction, showPrediction = true, compact = 
               <span>{match.away_score}</span>
             </div>
           ) : (
-            <div className="text-gray-400 text-sm font-medium">VS</div>
+            <div className="flex flex-col items-center gap-0.5">
+              <div className="text-gray-400 text-sm font-medium">VS</div>
+              {!live && !compact && (
+                <span className="text-[10px] text-gray-600 text-center leading-tight whitespace-nowrap">
+                  resultado após o jogo
+                </span>
+              )}
+            </div>
           )}
           {compact && (
             <span className="text-xs text-gray-500">

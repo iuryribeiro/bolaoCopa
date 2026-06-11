@@ -58,6 +58,9 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
   const live = isMatchLive(match.status)
   const finished = isMatchFinished(match.status)
   const hasScore = match.home_score !== null
+  // Free tier mantém status NS durante o jogo — detecta pelo horário
+  const shouldBeInProgress = !live && !finished && match.status === 'NS'
+    && new Date(match.match_date) < new Date()
   const homePT = translateTeamName(match.home_team_name)
   const awayPT = translateTeamName(match.away_team_name)
 
@@ -132,6 +135,8 @@ export default async function MatchDetailPage({ params }: { params: Promise<{ id
             <Badge variant="live">AO VIVO {match.elapsed ? `${match.elapsed}'` : ''}</Badge>
           ) : finished ? (
             <Badge variant="gray">Encerrado</Badge>
+          ) : shouldBeInProgress ? (
+            <Badge variant="live">Em andamento</Badge>
           ) : (
             <Badge variant="blue">
               <Clock className="w-3 h-3" />

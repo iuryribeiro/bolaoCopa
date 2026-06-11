@@ -8,7 +8,7 @@ export async function GET() {
     const supabase = await createAdminClient()
 
     // Verificar se há jogos que devem estar ao vivo
-    const twoHoursAgo = new Date(Date.now() - 120 * 60 * 1000).toISOString()
+    const twoHoursAgo = new Date(Date.now() - 180 * 60 * 1000).toISOString()
     const now = new Date().toISOString()
 
     const { data: currentLiveInDB } = await supabase
@@ -28,7 +28,7 @@ export async function GET() {
     const shouldSync = (currentLiveInDB?.length ?? 0) > 0 || (possiblyStarted?.length ?? 0) > 0
 
     if (shouldSync) {
-      // getLiveMatches usa cache de 2min — só chama API se expirou
+      // getLiveMatches busca todos os jogos da competição (2min cache)
       const result = await footballData.getLiveMatches()
 
       if (!result.fromCache) {
@@ -36,6 +36,7 @@ export async function GET() {
           const matchData = mapFDMatchToSupabase(fdMatch)
           await supabase.from('matches').upsert(matchData, { onConflict: 'api_fixture_id' })
 
+          // Recalcular pontos quando jogo encerrar
           if (['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)) {
             const { data: match } = await supabase
               .from('matches').select('id').eq('api_fixture_id', fdMatch.id).single()

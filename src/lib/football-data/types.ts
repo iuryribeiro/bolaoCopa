@@ -5,6 +5,7 @@
 export type FDMatchStatus =
   | 'SCHEDULED'
   | 'TIMED'
+  | 'LIVE'
   | 'IN_PLAY'
   | 'PAUSED'
   | 'EXTRA_TIME'
