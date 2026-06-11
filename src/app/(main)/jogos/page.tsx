@@ -85,7 +85,12 @@ export default function JogosPage() {
   useEffect(() => { fetchData(true) }, [fetchData])
 
   // Auto-poll every 60s when there are live matches
-  const hasLive = allMatches.some(m => ['1H', 'HT', '2H', 'ET', 'P', 'BT'].includes(m.status))
+  const isEffectivelyLive = (m: Match) => {
+    if (['1H', 'HT', '2H', 'ET', 'P', 'BT'].includes(m.status)) return true
+    // Free tier: status fica NS durante o jogo, detecta pelo horário
+    return m.status === 'NS' && new Date(m.match_date) < new Date()
+  }
+  const hasLive = allMatches.some(isEffectivelyLive)
   useEffect(() => {
     if (!hasLive) return
     const id = setInterval(() => fetchData(false), 60_000)
@@ -100,7 +105,7 @@ export default function JogosPage() {
       if (stage && match.stage !== stage) return false
 
       if (statusFilter === 'live') {
-        if (!['1H', 'HT', '2H', 'ET', 'P', 'BT'].includes(match.status)) return false
+        if (!isEffectivelyLive(match)) return false
       } else if (statusFilter === 'finished') {
         if (!['FT', 'AET', 'PEN', 'AWD'].includes(match.status)) return false
       } else if (statusFilter === 'upcoming') {
@@ -321,7 +326,7 @@ export default function JogosPage() {
             )}
           >
             {f.label}
-            {f.value === 'live' && allMatches.some(m => ['1H','HT','2H','ET','P','BT'].includes(m.status)) && (
+            {f.value === 'live' && allMatches.some(isEffectivelyLive) && (
               <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
             )}
           </button>
