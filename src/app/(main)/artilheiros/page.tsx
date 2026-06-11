@@ -1,320 +1,451 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Image from 'next/image'
-import { Swords, Target, Check, X, Trophy, Search } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { Swords, Search, Lock, Trophy, Users, Star, X } from 'lucide-react'
+import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Avatar } from '@/components/ui/Avatar'
 import { LoadingSpinner } from '@/components/ui/Loading'
 import { translateTeamName } from '@/lib/team-names'
 import { cn } from '@/lib/utils'
 
-interface ScorerPlayer {
-  player: {
-    id: string | number
-    name: string
-    photo: string | null
-    nationality: string | null
-    position: string | null
-  }
-  statistics: Array<{
-    team: { id: number | null; name: string | null; logo: string | null }
-    goals: { total: number | null; assists: number | null }
-    games: { appearences: number | null; minutes: number | null }
-  }>
+interface Player {
+  id: string
+  player_name: string
+  team_name: string | null
+  team_logo: string | null
+  nationality: string | null
+  position: string | null
+  goals_scored: number
+  assists: number
 }
 
+interface Prediction {
+  user_id: string
+  player_name: string
+  team_name: string | null
+  scorer_player_id: string | null
+  player: { player_name: string; team_name: string | null; team_logo: string | null; goals_scored: number } | null
+  profile: { name: string; avatar_url: string | null } | null
+}
+
+interface MyPrediction {
+  scorer_player_id: string | null
+  player_name: string
+  team_name: string | null
+  player: Player | null
+}
+
+type Tab = 'pick' | 'parcial' | 'galera'
+
 export default function ArtilheirosPage() {
-  const [allPlayers, setAllPlayers] = useState<ScorerPlayer[]>([])
-  const [filtered, setFiltered] = useState<ScorerPlayer[]>([])
-  const [search, setSearch] = useState('')
+  const [locked, setLocked] = useState(true)
+  const [myPrediction, setMyPrediction] = useState<MyPrediction | null>(null)
+  const [players, setPlayers] = useState<Player[]>([])
+  const [allPredictions, setAllPredictions] = useState<Prediction[]>([])
   const [loading, setLoading] = useState(true)
-  const [myPrediction, setMyPrediction] = useState<{
-    player_id: string | number
-    player_name: string
-    team_name: string | null
-    player_photo: string | null
-    is_correct: boolean | null
-    points: number
-  } | null>(null)
-  const [savingPrediction, setSavingPrediction] = useState(false)
-  const [predictionSaved, setPredictionSaved] = useState(false)
-  const [locked, setLocked] = useState(false)
+  const [tab, setTab] = useState<Tab>('pick')
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<Player | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [playersRes, predRes, settingsRes] = await Promise.all([
-          fetch('/api/football/players'),
-          fetch('/api/top-scorer-prediction'),
-          fetch('/api/competition-settings'),
-        ])
-
-        const playersData = await playersRes.json()
-        const predData = await predRes.json()
-        const settingsData = await settingsRes.json()
-
-        setAllPlayers(playersData.players || [])
-        setFiltered(playersData.players || [])
-        setMyPrediction(predData.prediction || null)
-        setLocked(settingsData.settings?.top_scorer_prediction_locked || false)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchAll()
+    fetch('/api/predictions/top-scorer')
+      .then(r => r.json())
+      .then(data => {
+        setLocked(data.locked ?? true)
+        setMyPrediction(data.myPrediction ?? null)
+        setPlayers(data.players ?? [])
+        setAllPredictions(data.allPredictions ?? [])
+        if (data.myPrediction?.player) {
+          setSelected(data.myPrediction.player)
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => {
-    if (!search.trim()) {
-      setFiltered(allPlayers)
-      return
-    }
+  const filteredPlayers = useMemo(() => {
+    if (!search.trim()) return players
     const q = search.toLowerCase()
-    setFiltered(allPlayers.filter(p =>
-      p.player.name.toLowerCase().includes(q) ||
-      (p.statistics[0]?.team?.name && translateTeamName(p.statistics[0].team.name).toLowerCase().includes(q))
-    ))
-  }, [search, allPlayers])
+    return players.filter(p =>
+      p.player_name.toLowerCase().includes(q) ||
+      (p.team_name && translateTeamName(p.team_name).toLowerCase().includes(q))
+    )
+  }, [players, search])
 
-  const handlePickScorer = async (player: ScorerPlayer) => {
-    if (locked) return
-    setSavingPrediction(true)
+  const scorers = useMemo(() =>
+    players.filter(p => p.goals_scored > 0).sort((a, b) => b.goals_scored - a.goals_scored),
+    [players]
+  )
+
+  async function handleSave() {
+    if (!selected || locked) return
+    setSaving(true)
+    setSaveError('')
     try {
-      const stats = player.statistics[0]
-      const res = await fetch('/api/top-scorer-prediction', {
+      const res = await fetch('/api/predictions/top-scorer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          player_id: player.player.id,
-          player_name: player.player.name,
-          player_photo: player.player.photo,
-          team_id: stats?.team?.id,
-          team_name: stats?.team?.name,
-        }),
+        body: JSON.stringify({ scorer_player_id: selected.id }),
       })
-
-      if (res.ok) {
-        const data = await res.json()
-        setMyPrediction(data.prediction)
-        setPredictionSaved(true)
-        setTimeout(() => setPredictionSaved(false), 3000)
+      const data = await res.json()
+      if (!res.ok) {
+        setSaveError(data.error || 'Erro ao salvar')
+        return
       }
+      setMyPrediction({
+        scorer_player_id: selected.id,
+        player_name: selected.player_name,
+        team_name: selected.team_name,
+        player: selected,
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } catch {
+      setSaveError('Erro de conexão')
     } finally {
-      setSavingPrediction(false)
+      setSaving(false)
     }
   }
 
-  const tournamentStarted = allPlayers.some(p => (p.statistics[0]?.goals?.total ?? 0) > 0)
+  if (loading) return <LoadingSpinner />
+
+  const hasPrediction = !!myPrediction?.scorer_player_id
+  const isChanged = selected?.id !== myPrediction?.scorer_player_id
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'pick', label: 'Meu palpite' },
+    { key: 'parcial', label: `Parcial de gols${scorers.length > 0 ? ` (${scorers.length})` : ''}` },
+    { key: 'galera', label: `Galera (${allPredictions.length})` },
+  ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 max-w-2xl mx-auto">
+      {/* Header */}
       <div className="flex items-center gap-3">
-        <Swords className="w-6 h-6 text-orange-400" />
+        <Swords className="w-6 h-6 text-yellow-400" />
         <div>
-          <h1 className="text-2xl font-bold text-white">Artilheiros</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {tournamentStarted ? 'Ranking ao vivo da Copa' : 'Jogadores esperados na Copa 2026'}
-          </p>
+          <h1 className="text-2xl font-bold text-white">Artilheiro da Copa</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Quem vai ser o artilheiro do Mundial 2026?</p>
         </div>
       </div>
 
-      {/* Minha previsão */}
-      {myPrediction && (
-        <Card className="p-4 bg-purple-500/10 border-purple-500/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {myPrediction.player_photo ? (
-                <Image
-                  src={myPrediction.player_photo}
-                  alt={myPrediction.player_name}
-                  width={40}
-                  height={40}
-                  className="rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 text-sm font-bold">
-                  {myPrediction.player_name.slice(0, 2).toUpperCase()}
-                </div>
-              )}
-              <div>
-                <p className="text-white font-semibold text-sm">{myPrediction.player_name}</p>
-                <p className="text-xs text-gray-400">
-                  {myPrediction.team_name ? translateTeamName(myPrediction.team_name) : ''}
-                </p>
+      {/* Lock banner */}
+      {locked && (
+        <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          <Lock className="w-4 h-4 text-red-400 shrink-0" />
+          <p className="text-sm text-red-300">Copa já começou — palpites encerrados.</p>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={cn(
+              'px-4 py-2 rounded-full text-xs font-medium transition-all border',
+              tab === key
+                ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+                : 'bg-white/5 text-gray-400 hover:text-white border-white/10'
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: Meu palpite ── */}
+      {tab === 'pick' && (
+        <div className="space-y-4">
+          {/* Current pick */}
+          {selected ? (
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-gray-400 font-medium">
+                  {hasPrediction && !isChanged ? 'Sua escolha' : 'Selecionado'}
+                </span>
+                {hasPrediction && !isChanged && locked && (
+                  <div className="flex items-center gap-1 text-xs text-red-400">
+                    <Lock className="w-3 h-3" /> Bloqueado
+                  </div>
+                )}
+                {hasPrediction && !isChanged && !locked && (
+                  <Badge variant="yellow">Confirmado</Badge>
+                )}
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {myPrediction.is_correct === true && <Badge variant="green">+5pts · Correto!</Badge>}
-              {myPrediction.is_correct === false && <Badge variant="red">Errou</Badge>}
-              {myPrediction.is_correct === null && (
-                <div className="flex items-center gap-1.5 text-xs text-purple-400">
-                  <Trophy className="w-3 h-3" />
-                  Minha escolha
+              <div className="flex items-center gap-3">
+                {selected.team_logo ? (
+                  <Image
+                    src={selected.team_logo}
+                    alt={selected.team_name || ''}
+                    width={44}
+                    height={44}
+                    className="object-contain shrink-0"
+                  />
+                ) : (
+                  <div className="w-11 h-11 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400 font-bold text-sm shrink-0">
+                    {selected.player_name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white">{selected.player_name}</p>
+                  <p className="text-xs text-gray-400">
+                    {selected.team_name ? translateTeamName(selected.team_name) : '—'}
+                    {selected.position ? ` · ${selected.position}` : ''}
+                  </p>
+                </div>
+                {selected.goals_scored > 0 && (
+                  <div className="flex items-center gap-1 text-yellow-400 font-bold text-lg shrink-0">
+                    ⚽ {selected.goals_scored}
+                  </div>
+                )}
+              </div>
+
+              {/* Save / cancel buttons (only when unlocked and changed) */}
+              {!locked && isChanged && (
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex-1 py-2 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-sm font-medium hover:bg-yellow-500/30 transition-all disabled:opacity-50"
+                  >
+                    {saving ? 'Salvando…' : 'Confirmar escolha'}
+                  </button>
+                  <button
+                    onClick={() => setSelected(myPrediction?.player ?? null)}
+                    className="px-3 py-2 rounded-lg bg-white/5 text-gray-400 border border-white/10 hover:text-white transition-all"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               )}
+
+              {saved && (
+                <p className="mt-2 text-xs text-green-400 text-center">Palpite salvo com sucesso!</p>
+              )}
+              {saveError && (
+                <p className="mt-2 text-xs text-red-400">{saveError}</p>
+              )}
+            </Card>
+          ) : locked ? (
+            <Card className="p-6 text-center">
+              <Lock className="w-8 h-8 mx-auto mb-2 text-red-400/60" />
+              <p className="text-sm text-gray-400">Você não fez seu palpite antes da Copa começar.</p>
+            </Card>
+          ) : (
+            <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-xl px-4 py-3 text-sm text-yellow-400/70">
+              Selecione um jogador abaixo para fazer seu palpite
             </div>
-          </div>
+          )}
+
+          {/* Player selection list (only visible when unlocked) */}
+          {!locked && (
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar jogador ou seleção…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/40 text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {filteredPlayers.length === 0 ? (
+                  <p className="text-center text-gray-500 text-sm py-6">Nenhum jogador encontrado</p>
+                ) : (
+                  filteredPlayers.map(player => (
+                    <button
+                      key={player.id}
+                      onClick={() => setSelected(player)}
+                      className={cn(
+                        'w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all',
+                        selected?.id === player.id
+                          ? 'bg-yellow-500/15 border-yellow-500/40'
+                          : 'bg-white/5 border-white/10 hover:bg-white/8 hover:border-white/20'
+                      )}
+                    >
+                      {player.team_logo ? (
+                        <Image
+                          src={player.team_logo}
+                          alt={player.team_name || ''}
+                          width={32}
+                          height={32}
+                          className="object-contain shrink-0"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs text-gray-400 shrink-0">
+                          {player.player_name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          'text-sm font-medium truncate',
+                          selected?.id === player.id ? 'text-yellow-400' : 'text-white'
+                        )}>
+                          {player.player_name}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {player.team_name ? translateTeamName(player.team_name) : ''}
+                          {player.position ? ` · ${player.position}` : ''}
+                        </p>
+                      </div>
+                      {player.goals_scored > 0 && (
+                        <span className="text-xs text-yellow-400 font-medium shrink-0">
+                          ⚽ {player.goals_scored}
+                        </span>
+                      )}
+                      {selected?.id === player.id && (
+                        <Star className="w-4 h-4 text-yellow-400 shrink-0" />
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+
+          <Card className="p-4">
+            <p className="text-xs text-gray-500 text-center">
+              Acerte o artilheiro da Copa e ganhe{' '}
+              <span className="text-yellow-400 font-semibold">5 pontos extras</span>
+            </p>
+          </Card>
+        </div>
+      )}
+
+      {/* ── TAB: Parcial de gols ── */}
+      {tab === 'parcial' && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm font-semibold text-white">Parcial de artilheiros</span>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {scorers.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">
+                Nenhum gol registrado ainda.
+              </p>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {scorers.map((player, i) => (
+                  <div key={player.id} className="flex items-center gap-3 px-4 py-3">
+                    <span className={cn(
+                      'text-sm font-bold w-5 text-center shrink-0',
+                      i === 0 ? 'text-yellow-400' :
+                      i === 1 ? 'text-gray-300' :
+                      i === 2 ? 'text-amber-600' :
+                      'text-gray-600'
+                    )}>
+                      {i + 1}
+                    </span>
+                    {player.team_logo ? (
+                      <Image
+                        src={player.team_logo}
+                        alt={player.team_name || ''}
+                        width={28}
+                        height={28}
+                        className="object-contain shrink-0"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-white/10 shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{player.player_name}</p>
+                      <p className="text-xs text-gray-500">
+                        {player.team_name ? translateTeamName(player.team_name) : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-yellow-400 font-bold">
+                        ⚽ {player.goals_scored}
+                      </span>
+                      {player.assists > 0 && (
+                        <span className="text-xs text-blue-400 hidden sm:inline">
+                          {player.assists} ass
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
         </Card>
       )}
 
-      {predictionSaved && (
-        <div className="flex items-center gap-2 text-green-400 text-sm p-3 bg-green-500/10 rounded-lg border border-green-500/20">
-          <Check className="w-4 h-4" />
-          Artilheiro escolhido com sucesso!
-        </div>
-      )}
-
-      {locked && (
-        <div className="flex items-center gap-2 text-gray-400 text-sm p-3 bg-white/5 rounded-lg border border-white/10">
-          <X className="w-4 h-4" />
-          Prazo para escolha do artilheiro encerrado
-        </div>
-      )}
-
-      {!tournamentStarted && !locked && (
-        <div className="flex items-start gap-2 text-orange-400/80 text-xs p-3 bg-orange-500/10 rounded-lg border border-orange-500/20">
-          <Trophy className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          Copa ainda não começou — escolha agora quem você acredita que vai ser o artilheiro!
-          A lista de gols será atualizada durante o torneio.
-        </div>
-      )}
-
-      {/* Busca */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Buscar jogador ou seleção..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40 focus:border-orange-500/40 transition-all text-sm"
-        />
-      </div>
-
-      {loading ? (
-        <LoadingSpinner />
-      ) : (
-        <div className="space-y-2">
-          {filtered.length === 0 ? (
-            <div className="text-center py-12">
-              <Target className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-              <p className="text-gray-400">Nenhum jogador encontrado</p>
+      {/* ── TAB: O que a galera escolheu ── */}
+      {tab === 'galera' && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-blue-400" />
+              <span className="text-sm font-semibold text-white">
+                Palpites da galera
+              </span>
             </div>
-          ) : (
-            filtered.map((player, index) => {
-              const stats = player.statistics[0]
-              const goals = stats?.goals?.total ?? 0
-              const assists = stats?.goals?.assists ?? 0
-              const appearances = stats?.games?.appearences ?? 0
-              const teamNamePT = stats?.team?.name ? translateTeamName(stats.team.name) : ''
-              const isMyPick = String(myPrediction?.player_id) === String(player.player.id)
-
-              return (
-                <Card
-                  key={player.player.id}
-                  hover={!locked}
-                  className={cn(isMyPick ? 'border-purple-500/40 bg-purple-500/5' : '')}
-                >
-                  <div className="p-3 flex items-center gap-2">
-                    {/* Posição */}
-                    <div className="w-5 text-center shrink-0">
-                      {tournamentStarted && goals > 0 ? (
-                        <span className={cn(
-                          'text-sm font-bold',
-                          index === 0 ? 'text-yellow-400' :
-                          index === 1 ? 'text-gray-300' :
-                          index === 2 ? 'text-amber-600' :
-                          'text-gray-500'
-                        )}>
-                          {index + 1}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-600">—</span>
-                      )}
-                    </div>
-
-                    {/* Foto */}
-                    <div className="shrink-0">
-                      {player.player.photo ? (
-                        <Image
-                          src={player.player.photo}
-                          alt={player.player.name}
-                          width={36}
-                          height={36}
-                          className="rounded-full object-cover w-9 h-9"
-                        />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-gray-400 text-xs font-semibold">
-                          {player.player.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <p className="text-sm font-semibold text-white truncate">{player.player.name}</p>
-                        {isMyPick && <Badge variant="blue" className="hidden sm:inline-flex">Minha escolha</Badge>}
-                      </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {stats?.team?.logo && (
-                          <Image src={stats.team.logo} alt={teamNamePT} width={12} height={12} className="object-contain shrink-0" />
-                        )}
-                        <p className="text-xs text-gray-400 truncate">{teamNamePT}</p>
-                      </div>
-                    </div>
-
-                    {/* Stats (só mostra se a copa já começou) */}
-                    {tournamentStarted && (
-                      <div className="flex items-center gap-2 shrink-0 text-center">
-                        <div>
-                          <div className="text-sm font-bold text-orange-400">{goals}</div>
-                          <div className="text-xs text-gray-500">gols</div>
-                        </div>
-                        {assists > 0 && (
-                          <div className="hidden sm:block">
-                            <div className="text-sm font-bold text-blue-400">{assists}</div>
-                            <div className="text-xs text-gray-500">ass</div>
-                          </div>
-                        )}
-                        {appearances > 0 && (
-                          <div className="hidden sm:block">
-                            <div className="text-sm font-bold text-gray-400">{appearances}</div>
-                            <div className="text-xs text-gray-500">jogos</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Botão escolher */}
-                    {!locked && (
-                      <Button
-                        variant={isMyPick ? 'secondary' : 'outline'}
+          </CardHeader>
+          <CardContent className="p-0">
+            {allPredictions.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">
+                Nenhum palpite registrado ainda.
+              </p>
+            ) : (
+              <div className="divide-y divide-white/5">
+                {allPredictions.map((pred, i) => {
+                  const playerName = pred.player?.player_name || pred.player_name
+                  const teamName = pred.player?.team_name || pred.team_name
+                  const goals = pred.player?.goals_scored ?? 0
+                  return (
+                    <div key={i} className="flex items-center gap-3 px-4 py-3">
+                      <Avatar
+                        src={pred.profile?.avatar_url}
+                        name={pred.profile?.name || 'U'}
                         size="sm"
-                        onClick={() => handlePickScorer(player)}
-                        loading={savingPrediction}
-                        className="shrink-0 min-w-[44px]"
-                      >
-                        {isMyPick ? '✓' : 'Escolher'}
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              )
-            })
-          )}
-        </div>
+                      />
+                      <span className="text-sm text-white flex-1 min-w-0 truncate">
+                        {pred.profile?.name}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {pred.player?.team_logo && (
+                          <Image
+                            src={pred.player.team_logo}
+                            alt=""
+                            width={20}
+                            height={20}
+                            className="object-contain"
+                          />
+                        )}
+                        <span className="text-sm text-yellow-400 font-medium">
+                          {playerName}
+                        </span>
+                        {teamName && (
+                          <span className="text-xs text-gray-500 hidden sm:inline">
+                            · {translateTeamName(teamName)}
+                          </span>
+                        )}
+                        {goals > 0 && (
+                          <Badge variant="yellow">⚽ {goals}</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
-
-      <Card className="p-4">
-        <p className="text-xs text-gray-500 text-center">
-          Acerte o artilheiro da Copa e ganhe <span className="text-orange-400 font-semibold">5 pontos extras</span>
-        </p>
-      </Card>
     </div>
   )
 }
