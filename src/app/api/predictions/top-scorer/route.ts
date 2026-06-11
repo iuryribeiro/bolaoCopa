@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 async function getLocked(supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data } = await supabase
@@ -16,30 +16,83 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    const [lockedRes, myPredRes, playersRes, allPredsRes] = await Promise.all([
+    const admin = await createAdminClient()
+
+    // Busca paralela — sem joins que dependem de FK entre tabelas não diretamente relacionadas
+    const [lockedRes, myPredRes, playersRes, predsRes, profilesRes] = await Promise.all([
       getLocked(supabase),
       supabase
         .from('top_scorer_predictions')
-        .select('*, player:scorer_player_id(id, player_name, team_name, team_logo, goals_scored, nationality)')
+        .select('*')
         .eq('user_id', user.id)
         .maybeSingle(),
-      supabase
+      admin
         .from('top_scorer_players')
         .select('*')
         .eq('is_active', true)
         .order('goals_scored', { ascending: false })
         .order('player_name', { ascending: true }),
-      supabase
+      // Busca só as colunas básicas que com certeza existem
+      admin
         .from('top_scorer_predictions')
-        .select('user_id, player_name, team_name, scorer_player_id, player:scorer_player_id(player_name, team_name, team_logo, goals_scored), profile:user_profiles(name, avatar_url)')
+        .select('user_id, player_name, team_name, created_at')
         .order('created_at', { ascending: true }),
+      admin
+        .from('user_profiles')
+        .select('user_id, name, avatar_url'),
     ])
+
+    // Monta mapa de perfis por user_id
+    const profileMap = new Map<string, { name: string; avatar_url: string | null }>()
+    for (const p of (profilesRes.data || [])) {
+      profileMap.set(p.user_id, { name: p.name, avatar_url: p.avatar_url })
+    }
+
+    // Tenta buscar scorer_player_id (só existe se a migration foi rodada)
+    const scorerMap = new Map<string, string>()
+    try {
+      const { data: scorerData } = await admin
+        .from('top_scorer_predictions')
+        .select('user_id, scorer_player_id')
+        .not('scorer_player_id', 'is', null)
+      for (const s of (scorerData || [])) {
+        if (s.scorer_player_id) scorerMap.set(s.user_id, s.scorer_player_id)
+      }
+    } catch { /* coluna ainda não existe — ignora */ }
+
+    // Mapa de players por id
+    const playerMap = new Map<string, Record<string, unknown>>()
+    for (const pl of (playersRes.data || [])) {
+      playerMap.set(pl.id, pl)
+    }
+
+    // Monta lista final da galera
+    const allPredictions = (predsRes.data || []).map(pred => {
+      const scorerPlayerId = scorerMap.get(pred.user_id) ?? null
+      const player = scorerPlayerId ? (playerMap.get(scorerPlayerId) ?? null) : null
+      return {
+        user_id: pred.user_id,
+        player_name: pred.player_name,
+        team_name: pred.team_name,
+        scorer_player_id: scorerPlayerId,
+        player,
+        profile: profileMap.get(pred.user_id) ?? null,
+      }
+    })
+
+    // Player do palpite do próprio usuário
+    let myPlayer = null
+    const myPred = myPredRes.data as Record<string, unknown> | null
+    const myScorerPlayerId = myPred ? (scorerMap.get(user.id) ?? null) : null
+    if (myScorerPlayerId) {
+      myPlayer = playerMap.get(myScorerPlayerId) ?? null
+    }
 
     return NextResponse.json({
       locked: lockedRes,
-      myPrediction: myPredRes.data,
+      myPrediction: myPred ? { ...myPred, scorer_player_id: myScorerPlayerId, player: myPlayer } : null,
       players: playersRes.data || [],
-      allPredictions: allPredsRes.data || [],
+      allPredictions,
     })
   } catch (err) {
     console.error('[top-scorer GET]', err)

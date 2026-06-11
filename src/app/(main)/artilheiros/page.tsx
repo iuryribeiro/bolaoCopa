@@ -97,11 +97,30 @@ export default function ArtilheirosPage() {
         setSaveError(data.error || 'Erro ao salvar')
         return
       }
-      setMyPrediction({
+      const updated: MyPrediction = {
         scorer_player_id: selected.id,
         player_name: selected.player_name,
         team_name: selected.team_name,
         player: selected,
+      }
+      setMyPrediction(updated)
+      // Atualiza a própria entrada na lista da galera
+      setAllPredictions(prev => {
+        const idx = prev.findIndex(p => p.user_id === data.prediction?.user_id)
+        const entry: Prediction = {
+          user_id: data.prediction?.user_id ?? '',
+          player_name: selected.player_name,
+          team_name: selected.team_name,
+          scorer_player_id: selected.id,
+          player: { player_name: selected.player_name, team_name: selected.team_name, team_logo: selected.team_logo, goals_scored: selected.goals_scored },
+          profile: prev[idx]?.profile ?? null,
+        }
+        if (idx >= 0) {
+          const copy = [...prev]
+          copy[idx] = entry
+          return copy
+        }
+        return [...prev, entry]
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
@@ -114,7 +133,8 @@ export default function ArtilheirosPage() {
 
   if (loading) return <LoadingSpinner />
 
-  const hasPrediction = !!myPrediction?.scorer_player_id
+  // Tem palpite se existe o registro (mesmo sem scorer_player_id — formato antigo)
+  const hasPrediction = !!myPrediction
   const isChanged = selected?.id !== myPrediction?.scorer_player_id
 
   const tabs: { key: Tab; label: string }[] = [
@@ -163,8 +183,8 @@ export default function ArtilheirosPage() {
       {/* ── TAB: Meu palpite ── */}
       {tab === 'pick' && (
         <div className="space-y-4">
-          {/* Current pick */}
-          {selected ? (
+          {/* Current pick — mostra se tem player selecionado OU palpite antigo (sem scorer_player_id) */}
+          {(selected || hasPrediction) ? (
             <Card className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs text-gray-400 font-medium">
@@ -180,7 +200,7 @@ export default function ArtilheirosPage() {
                 )}
               </div>
               <div className="flex items-center gap-3">
-                {selected.team_logo ? (
+                {selected?.team_logo ? (
                   <Image
                     src={selected.team_logo}
                     alt={selected.team_name || ''}
@@ -190,19 +210,21 @@ export default function ArtilheirosPage() {
                   />
                 ) : (
                   <div className="w-11 h-11 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400 font-bold text-sm shrink-0">
-                    {selected.player_name.slice(0, 2).toUpperCase()}
+                    {(selected?.player_name ?? myPrediction?.player_name ?? '?').slice(0, 2).toUpperCase()}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white">{selected.player_name}</p>
+                  <p className="font-semibold text-white">{selected?.player_name ?? myPrediction?.player_name}</p>
                   <p className="text-xs text-gray-400">
-                    {selected.team_name ? translateTeamName(selected.team_name) : '—'}
-                    {selected.position ? ` · ${selected.position}` : ''}
+                    {(selected?.team_name ?? myPrediction?.team_name)
+                      ? translateTeamName(selected?.team_name ?? myPrediction?.team_name ?? '')
+                      : '—'}
+                    {selected?.position ? ` · ${selected.position}` : ''}
                   </p>
                 </div>
-                {selected.goals_scored > 0 && (
+                {(selected?.goals_scored ?? 0) > 0 && (
                   <div className="flex items-center gap-1 text-yellow-400 font-bold text-lg shrink-0">
-                    ⚽ {selected.goals_scored}
+                    ⚽ {selected!.goals_scored}
                   </div>
                 )}
               </div>
