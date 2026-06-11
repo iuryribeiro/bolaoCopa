@@ -33,10 +33,23 @@ export async function GET() {
 
       if (!result.fromCache) {
         for (const fdMatch of result.data) {
-          const matchData = mapFDMatchToSupabase(fdMatch)
-          await supabase.from('matches').upsert(matchData, { onConflict: 'api_fixture_id' })
+          // Times ainda não definidos — pular
+          if (!fdMatch.homeTeam?.id || !fdMatch.awayTeam?.id) continue
 
-          // Recalcular pontos quando jogo encerrar
+          const matchData = mapFDMatchToSupabase(fdMatch)
+          const isFinishedNoScore = ['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)
+            && matchData.home_score === null
+
+          if (isFinishedNoScore) {
+            // Preserva placar existente — API ainda não enviou score (delay free tier)
+            await supabase
+              .from('matches')
+              .update({ status: matchData.status, last_synced_at: matchData.last_synced_at })
+              .eq('api_fixture_id', fdMatch.id)
+          } else {
+            await supabase.from('matches').upsert(matchData, { onConflict: 'api_fixture_id' })
+          }
+
           if (['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)) {
             const { data: match } = await supabase
               .from('matches').select('id').eq('api_fixture_id', fdMatch.id).single()

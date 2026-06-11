@@ -96,14 +96,40 @@ export async function POST(request: Request) {
         ? (await footballData.getLiveMatches()).data
         : (await footballData.getMatches()).data
 
+      const errors: string[] = []
+
       for (const fdMatch of fdMatches) {
+        // Times ainda não definidos (fases eliminatórias futuras) — pular
+        if (!fdMatch.homeTeam?.id || !fdMatch.awayTeam?.id) continue
+
         const matchData = mapFDMatchToSupabase(fdMatch)
+        const isFinishedNoScore = ['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)
+          && matchData.home_score === null
 
-        const { error } = await adminSupabase
-          .from('matches')
-          .upsert(matchData, { onConflict: 'api_fixture_id' })
+        let upsertError: unknown = null
 
-        if (!error) count++
+        if (isFinishedNoScore) {
+          // API retornou FINISHED mas sem placar ainda (delay do free tier).
+          // Só atualiza status/metadata — preserva placar já existente no banco.
+          const { error } = await adminSupabase
+            .from('matches')
+            .update({ status: matchData.status, last_synced_at: matchData.last_synced_at })
+            .eq('api_fixture_id', fdMatch.id)
+          upsertError = error
+        } else {
+          const { error } = await adminSupabase
+            .from('matches')
+            .upsert(matchData, { onConflict: 'api_fixture_id' })
+          upsertError = error
+        }
+
+        if (upsertError) {
+          const msg = (upsertError as { message?: string }).message ?? String(upsertError)
+          console.error(`[SYNC] falhou fixture ${fdMatch.id}:`, upsertError)
+          errors.push(`fixture ${fdMatch.id}: ${msg}`)
+        } else {
+          count++
+        }
 
         if (['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)) {
           const { data: match } = await adminSupabase
@@ -112,6 +138,10 @@ export async function POST(request: Request) {
             await adminSupabase.rpc('recalculate_match_points', { p_match_id: match.id })
           }
         }
+      }
+
+      if (errors.length > 0) {
+        console.error(`[SYNC] ${errors.length} erros de upsert:`, errors.slice(0, 5))
       }
 
       const updatedUsage = await getApiUsage()
@@ -124,7 +154,13 @@ export async function POST(request: Request) {
         }).eq('id', log.id)
       }
 
-      return NextResponse.json({ success: true, message: `${count} jogos sincronizados`, count, usage: updatedUsage })
+      return NextResponse.json({
+        success: true,
+        message: `${count} jogos sincronizados${errors.length > 0 ? ` (${errors.length} erros)` : ''}`,
+        count,
+        usage: updatedUsage,
+        ...(errors.length > 0 && { upsert_errors: errors.slice(0, 5) }),
+      })
     } catch (syncError) {
       const errMsg = syncError instanceof Error ? syncError.message : 'Erro desconhecido'
       if (log) {
