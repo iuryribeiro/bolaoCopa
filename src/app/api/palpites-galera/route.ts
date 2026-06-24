@@ -19,7 +19,7 @@ export async function GET() {
     const { data: matches } = await supabase
       .from('matches')
       .select('*')
-      .order('match_date', { ascending: true })
+      .order('match_date', { ascending: false })
 
     const lockedMatches = (matches || []).filter(m => isPredictionLocked(m, deadlineHours))
     const lockedIds = lockedMatches.map(m => m.id)

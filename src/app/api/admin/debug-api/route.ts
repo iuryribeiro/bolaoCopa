@@ -43,12 +43,17 @@ export async function GET() {
       ['LIVE', 'IN_PLAY', 'PAUSED'].includes(m.status)
     )
 
+    const finishedMatches = matches.filter((m: { status: string }) =>
+      ['FINISHED', 'AWARDED'].includes(m.status)
+    )
+
     return NextResponse.json({
       competition: COMPETITION,
       total: matches.length,
       live_count: liveMatches.length,
       live: liveMatches,
       all_statuses: [...new Set(matches.map((m: { status: string }) => m.status))],
+      finished: finishedMatches,
     })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
