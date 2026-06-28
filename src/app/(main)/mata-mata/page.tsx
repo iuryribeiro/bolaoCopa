@@ -50,19 +50,19 @@ const R32_TO_R16: [number, number][] = [
 ]
 
 const R16_TO_QF: [number, number][] = [
-  [0, 1], // J97
-  [4, 5], // J98
-  [2, 3], // J99
-  [6, 7], // J100
+  [0, 1], // J97  = J89 vs J90
+  [4, 5], // J98  = J93 vs J94
+  [2, 3], // J99  = J91 vs J92
+  [6, 7], // J100 = J95 vs J96
 ]
 
 const QF_TO_SF: [number, number][] = [
-  [0, 1], // SF1
-  [2, 3], // SF2
+  [0, 1], // J101 = J97 vs J98
+  [2, 3], // J102 = J99 vs J100
 ]
 
 const SF_TO_FINAL: [number, number][] = [
-  [0, 1], // Final
+  [0, 1], // J103 = J101 vs J102
 ]
 
 const KNOCKOUT_STAGES: Stage[] = [
@@ -86,8 +86,8 @@ const MATCH_LABELS: Record<string, string[]> = {
   'Round of 32':    ['J73','J74','J75','J76','J77','J78','J79','J80','J81','J82','J83','J84','J85','J86','J87','J88'],
   'Round of 16':    ['J89','J90','J91','J92','J93','J94','J95','J96'],
   'Quarter-finals': ['J97','J98','J99','J100'],
-  'Semi-finals':    ['SF1','SF2'],
-  'Final':          ['Final'],
+  'Semi-finals':    ['J101','J102'],
+  'Final':          ['J103'],
 }
 
 interface TeamOption {
