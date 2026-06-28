@@ -11,59 +11,73 @@ import { cn } from '@/lib/utils'
 import { translateTeamName } from '@/lib/team-names'
 import type { Match, Stage } from '@/types'
 
-// ─── Chave oficial Copa 2026 ───────────────────────────────────────────────
+// =============================================================================
+// CHAVE OFICIAL COPA DO MUNDO 2026
+// =============================================================================
 //
-// Rodada de 32 ordenada por data → índices 0-15 (J73=0, J74=1, …, J88=15)
+// RODADA DE 32 — sorted por data → índice 0-15
+//   idx 0  = J73  | idx 1  = J74  | idx 2  = J75  | idx 3  = J76
+//   idx 4  = J77  | idx 5  = J78  | idx 6  = J79  | idx 7  = J80
+//   idx 8  = J81  | idx 9  = J82  | idx 10 = J83  | idx 11 = J84
+//   idx 12 = J85  | idx 13 = J86  | idx 14 = J87  | idx 15 = J88
 //
-// Oitavas (R16) ← winners da Rodada de 32:
-//   J89 = J73(0)  vs J75(2)
-//   J90 = J74(1)  vs J77(4)
-//   J91 = J76(3)  vs J78(5)
-//   J92 = J79(6)  vs J80(7)
-//   J93 = J83(10) vs J84(11)
-//   J94 = J81(8)  vs J82(9)
-//   J95 = J86(13) vs J88(15)
-//   J96 = J85(12) vs J87(14)
+// OITAVAS — cada par [a, b] = índices dos jogos da Rodada de 32:
+//   slot 0 → J89  = J73[0]  x J75[2]   ← [0, 2]
+//   slot 1 → J90  = J74[1]  x J77[4]   ← [1, 4]
+//   slot 2 → J91  = J76[3]  x J78[5]   ← [3, 5]
+//   slot 3 → J92  = J79[6]  x J80[7]   ← [6, 7]
+//   slot 4 → J93  = J83[10] x J84[11]  ← [10, 11]
+//   slot 5 → J94  = J81[8]  x J82[9]   ← [8, 9]
+//   slot 6 → J95  = J86[13] x J88[15]  ← [13, 15]
+//   slot 7 → J96  = J85[12] x J87[14]  ← [12, 14]
 //
-// Quartas (QF) ← winners das Oitavas (índices 0-7):
-//   J97  = J89(0) vs J90(1)
-//   J98  = J93(4) vs J94(5)
-//   J99  = J91(2) vs J92(3)
-//   J100 = J95(6) vs J96(7)
+// QUARTAS — cada par [a, b] = índices dos slots das Oitavas:
+//   slot 0 → J97  = J89[0] x J90[1]    ← [0, 1]
+//   slot 1 → J98  = J93[4] x J94[5]    ← [4, 5]
+//   slot 2 → J99  = J91[2] x J92[3]    ← [2, 3]
+//   slot 3 → J100 = J95[6] x J96[7]    ← [6, 7]
 //
-// Semis ← winners das Quartas (índices 0-3):
-//   SF1 = J97(0) vs J98(1)
-//   SF2 = J99(2) vs J100(3)
+// SEMIS — cada par [a, b] = índices dos slots das Quartas:
+//   slot 0 → J101 = J97[0] x J98[1]    ← [0, 1]
+//   slot 1 → J102 = J99[2] x J100[3]   ← [2, 3]
 //
-// Final ← SF1(0) vs SF2(1)
-// ──────────────────────────────────────────────────────────────────────────
+// 3º LUGAR — perdedores das Semis:
+//   J103 = perdedor J101 x perdedor J102
+//
+// FINAL — vencedores das Semis:
+//   J104 = J101[0] x J102[1]            ← [0, 1]
+//
+// =============================================================================
 
-const R32_TO_R16: [number, number][] = [
-  [0,  2],  // J89
-  [1,  4],  // J90
-  [3,  5],  // J91
-  [6,  7],  // J92
-  [10, 11], // J93
-  [8,  9],  // J94
-  [13, 15], // J95
-  [12, 14], // J96
+// Pairings: índices dos slots da fase ANTERIOR que se enfrentam
+const OITAVAS_PAIRS: [number, number][] = [
+  [0,  2],  // slot 0 → J89  = J73 x J75
+  [1,  4],  // slot 1 → J90  = J74 x J77
+  [3,  5],  // slot 2 → J91  = J76 x J78
+  [6,  7],  // slot 3 → J92  = J79 x J80
+  [10, 11], // slot 4 → J93  = J83 x J84
+  [8,  9],  // slot 5 → J94  = J81 x J82
+  [13, 15], // slot 6 → J95  = J86 x J88
+  [12, 14], // slot 7 → J96  = J85 x J87
 ]
 
-const R16_TO_QF: [number, number][] = [
-  [0, 1], // J97  = J89 vs J90
-  [4, 5], // J98  = J93 vs J94
-  [2, 3], // J99  = J91 vs J92
-  [6, 7], // J100 = J95 vs J96
+const QUARTAS_PAIRS: [number, number][] = [
+  [0, 1], // slot 0 → J97  = J89 x J90
+  [4, 5], // slot 1 → J98  = J93 x J94
+  [2, 3], // slot 2 → J99  = J91 x J92
+  [6, 7], // slot 3 → J100 = J95 x J96
 ]
 
-const QF_TO_SF: [number, number][] = [
-  [0, 1], // J101 = J97 vs J98
-  [2, 3], // J102 = J99 vs J100
+const SEMIS_PAIRS: [number, number][] = [
+  [0, 1], // slot 0 → J101 = J97 x J98
+  [2, 3], // slot 1 → J102 = J99 x J100
 ]
 
-const SF_TO_FINAL: [number, number][] = [
-  [0, 1], // J103 = J101 vs J102
+const FINAL_PAIRS: [number, number][] = [
+  [0, 1], // slot 0 → J104 = J101 x J102
 ]
+
+// =============================================================================
 
 const KNOCKOUT_STAGES: Stage[] = [
   'Round of 32',
@@ -83,7 +97,6 @@ const STAGE_LABELS: Record<string, string> = {
   'Final':          'Final',
 }
 
-// Labels de jogo por estágio
 const MATCH_LABELS: Record<string, string[]> = {
   'Round of 32':    ['J73','J74','J75','J76','J77','J78','J79','J80','J81','J82','J83','J84','J85','J86','J87','J88'],
   'Round of 16':    ['J89','J90','J91','J92','J93','J94','J95','J96'],
@@ -92,6 +105,8 @@ const MATCH_LABELS: Record<string, string[]> = {
   '3rd Place Final':['J103'],
   'Final':          ['J104'],
 }
+
+// =============================================================================
 
 interface TeamOption {
   id: number
@@ -108,8 +123,8 @@ interface BracketSlot {
 }
 
 function sortByDate(matches: Match[]) {
-  return [...matches].sort((a, b) =>
-    new Date(a.match_date).getTime() - new Date(b.match_date).getTime()
+  return [...matches].sort(
+    (a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime()
   )
 }
 
@@ -119,7 +134,8 @@ function teamOf(m: Match, side: 'home' | 'away'): TeamOption {
     : { id: m.away_team_id, name: translateTeamName(m.away_team_name), logo: m.away_team_logo }
 }
 
-function actualSlots(matches: Match[], stage: Stage): BracketSlot[] {
+/** Cria slots a partir de jogos reais da API */
+function fromActual(matches: Match[], stage: Stage): BracketSlot[] {
   return sortByDate(matches).map((m, idx) => ({
     ref: m.id,
     stage,
@@ -129,18 +145,23 @@ function actualSlots(matches: Match[], stage: Stage): BracketSlot[] {
   }))
 }
 
-function virtualSlots(
+/**
+ * Cria slots virtuais para a próxima fase.
+ * Cada par [i, j] indica os índices dos slots da fase anterior cujos
+ * VENCEDORES se enfrentam neste slot.
+ */
+function fromPicks(
   stage: Stage,
-  pairings: [number, number][],
-  prev: BracketSlot[],
+  pairs: [number, number][],
+  prevSlots: BracketSlot[],
   picks: Map<string, TeamOption>,
 ): BracketSlot[] {
-  return pairings.map(([i, j], idx) => ({
+  return pairs.map(([i, j], idx) => ({
     ref: `virtual-${stage}-${idx}`,
     stage,
     label: MATCH_LABELS[stage]?.[idx] ?? `#${idx + 1}`,
-    home: prev[i] ? (picks.get(prev[i].ref) ?? null) : null,
-    away: prev[j] ? (picks.get(prev[j].ref) ?? null) : null,
+    home: prevSlots[i] ? (picks.get(prevSlots[i].ref) ?? null) : null,
+    away: prevSlots[j] ? (picks.get(prevSlots[j].ref) ?? null) : null,
   }))
 }
 
@@ -148,39 +169,54 @@ function buildBracket(
   actualMatches: Match[],
   picks: Map<string, TeamOption>,
 ): Record<Stage, BracketSlot[]> {
-  const actual = (s: Stage) => actualMatches.filter(m => m.stage === s)
+  const real = (s: Stage) => actualMatches.filter(m => m.stage === s)
 
-  const r32 = actual('Round of 32').length > 0
-    ? actualSlots(actual('Round of 32'), 'Round of 32')
+  // ── Rodada de 32 ──────────────────────────────────────────────────────────
+  const r32: BracketSlot[] = real('Round of 32').length > 0
+    ? fromActual(real('Round of 32'), 'Round of 32')
     : []
 
-  const r16 = actual('Round of 16').length > 0
-    ? actualSlots(actual('Round of 16'), 'Round of 16')
+  // ── Oitavas ───────────────────────────────────────────────────────────────
+  // J89=R32[0]xR32[2], J90=R32[1]xR32[4], J91=R32[3]xR32[5], J92=R32[6]xR32[7]
+  // J93=R32[10]xR32[11], J94=R32[8]xR32[9], J95=R32[13]xR32[15], J96=R32[12]xR32[14]
+  const r16: BracketSlot[] = real('Round of 16').length > 0
+    ? fromActual(real('Round of 16'), 'Round of 16')
     : r32.length > 0
-      ? virtualSlots('Round of 16', R32_TO_R16, r32, picks)
+      ? fromPicks('Round of 16', OITAVAS_PAIRS, r32, picks)
       : []
 
-  const qf = actual('Quarter-finals').length > 0
-    ? actualSlots(actual('Quarter-finals'), 'Quarter-finals')
+  // ── Quartas ───────────────────────────────────────────────────────────────
+  // J97=R16[0]xR16[1], J98=R16[4]xR16[5], J99=R16[2]xR16[3], J100=R16[6]xR16[7]
+  const qf: BracketSlot[] = real('Quarter-finals').length > 0
+    ? fromActual(real('Quarter-finals'), 'Quarter-finals')
     : r16.length > 0
-      ? virtualSlots('Quarter-finals', R16_TO_QF, r16, picks)
+      ? fromPicks('Quarter-finals', QUARTAS_PAIRS, r16, picks)
       : []
 
-  const sf = actual('Semi-finals').length > 0
-    ? actualSlots(actual('Semi-finals'), 'Semi-finals')
+  // ── Semis ─────────────────────────────────────────────────────────────────
+  // J101=QF[0]xQF[1], J102=QF[2]xQF[3]
+  const sf: BracketSlot[] = real('Semi-finals').length > 0
+    ? fromActual(real('Semi-finals'), 'Semi-finals')
     : qf.length > 0
-      ? virtualSlots('Semi-finals', QF_TO_SF, qf, picks)
+      ? fromPicks('Semi-finals', SEMIS_PAIRS, qf, picks)
       : []
 
-  // J103 — Disputa de 3º lugar: perdedores das semis
-  const third = actual('3rd Place Final').length > 0
-    ? actualSlots(actual('3rd Place Final'), '3rd Place Final')
+  // ── 3º Lugar (perdedores das semis) ───────────────────────────────────────
+  // J103 = perdedor J101 x perdedor J102
+  const third: BracketSlot[] = real('3rd Place Final').length > 0
+    ? fromActual(real('3rd Place Final'), '3rd Place Final')
     : sf.length >= 2
       ? (() => {
           const sf0 = sf[0], sf1 = sf[1]
-          const pick0 = picks.get(sf0.ref), pick1 = picks.get(sf1.ref)
-          const loser0 = pick0 ? (pick0.id === sf0.home?.id ? sf0.away : sf0.home) : null
-          const loser1 = pick1 ? (pick1.id === sf1.home?.id ? sf1.away : sf1.home) : null
+          const pick0 = picks.get(sf0.ref)
+          const pick1 = picks.get(sf1.ref)
+          // loser = o time do slot que NÃO foi escolhido
+          const loser0 = pick0
+            ? (pick0.id === sf0.home?.id ? sf0.away : sf0.home)
+            : null
+          const loser1 = pick1
+            ? (pick1.id === sf1.home?.id ? sf1.away : sf1.home)
+            : null
           return [{
             ref: 'virtual-3rd Place Final-0',
             stage: '3rd Place Final' as Stage,
@@ -191,25 +227,28 @@ function buildBracket(
         })()
       : []
 
-  // J104 — Final: vencedores das semis
-  const fin = actual('Final').length > 0
-    ? actualSlots(actual('Final'), 'Final')
+  // ── Final ─────────────────────────────────────────────────────────────────
+  // J104 = vencedor J101 x vencedor J102
+  const fin: BracketSlot[] = real('Final').length > 0
+    ? fromActual(real('Final'), 'Final')
     : sf.length > 0
-      ? virtualSlots('Final', SF_TO_FINAL, sf, picks)
+      ? fromPicks('Final', FINAL_PAIRS, sf, picks)
       : []
 
   return {
-    'Round of 32': r32,
-    'Round of 16': r16,
+    'Round of 32':    r32,
+    'Round of 16':    r16,
     'Quarter-finals': qf,
-    'Semi-finals': sf,
-    '3rd Place Final': third,
-    'Final': fin,
-    'Group Stage': [],
+    'Semi-finals':    sf,
+    '3rd Place Final':third,
+    'Final':          fin,
+    'Group Stage':    [],
   }
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────
+// =============================================================================
+// COMPONENTE
+// =============================================================================
 
 export default function MataMataPage() {
   const [actualMatches, setActualMatches] = useState<Match[]>([])
@@ -220,47 +259,50 @@ export default function MataMataPage() {
   const [championPred, setChampionPred]   = useState<TeamOption | null>(null)
   const [savingChampion, setSavingChampion] = useState(false)
 
-  const bracket = useMemo(() => buildBracket(actualMatches, picks), [actualMatches, picks])
+  const bracket = useMemo(
+    () => buildBracket(actualMatches, picks),
+    [actualMatches, picks],
+  )
 
   useEffect(() => {
     ;(async () => {
       try {
-        const [matchesRes, predsRes, champRes, settingsRes] = await Promise.all([
+        const [mRes, pRes, cRes, sRes] = await Promise.all([
           fetch('/api/football/matches?limit=200'),
           fetch('/api/knockout-predictions'),
           fetch('/api/champion-prediction'),
           fetch('/api/competition-settings'),
         ])
-        const matchesData   = await matchesRes.json()
-        const predsData     = await predsRes.json()
-        const champData     = await champRes.json()
-        const settingsData  = await settingsRes.json()
+        const mData = await mRes.json()
+        const pData = await pRes.json()
+        const cData = await cRes.json()
+        const sData = await sRes.json()
 
         setActualMatches(
-          (matchesData.matches || []).filter((m: Match) => KNOCKOUT_STAGES.includes(m.stage))
+          (mData.matches || []).filter((m: Match) => KNOCKOUT_STAGES.includes(m.stage))
         )
-        setLocked(settingsData.settings?.knockout_prediction_locked || false)
+        setLocked(sData.settings?.knockout_prediction_locked || false)
 
-        const predMap = new Map<string, TeamOption>()
-        ;(predsData.predictions || []).forEach((p: {
+        const map = new Map<string, TeamOption>()
+        ;(pData.predictions || []).forEach((p: {
           match_reference: string
           predicted_team_id: number
           predicted_team_name: string
           predicted_team_logo: string | null
         }) => {
-          predMap.set(p.match_reference, {
+          map.set(p.match_reference, {
             id: p.predicted_team_id,
             name: p.predicted_team_name,
             logo: p.predicted_team_logo,
           })
         })
-        setPicks(predMap)
+        setPicks(map)
 
-        if (champData.prediction) {
+        if (cData.prediction) {
           setChampionPred({
-            id: champData.prediction.champion_team_id,
-            name: champData.prediction.champion_team_name,
-            logo: champData.prediction.champion_team_logo,
+            id: cData.prediction.champion_team_id,
+            name: cData.prediction.champion_team_name,
+            logo: cData.prediction.champion_team_logo,
           })
         }
       } catch (err) {
@@ -384,11 +426,9 @@ export default function MataMataPage() {
                         key={slot.ref}
                         className={cn('p-4', idx < bracket[stage].length - 1 && 'border-b border-white/5')}
                       >
-                        {/* Match label */}
                         <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider mb-2">
                           {slot.label}
                         </p>
-
                         <div className="flex items-center gap-2">
                           <TeamButton
                             team={slot.home}
@@ -478,7 +518,9 @@ export default function MataMataPage() {
   )
 }
 
-// ─── TeamButton ────────────────────────────────────────────────────────────
+// =============================================================================
+// BOTÃO DE TIME
+// =============================================================================
 
 function TeamButton({
   team,
@@ -511,7 +553,7 @@ function TeamButton({
         selected
           ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
           : 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10',
-        !canPick ? 'cursor-default' : 'cursor-pointer'
+        !canPick ? 'cursor-default' : 'cursor-pointer',
       )}
     >
       {team.logo && (
