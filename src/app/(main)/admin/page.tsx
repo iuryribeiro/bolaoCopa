@@ -69,6 +69,8 @@ export default function AdminPage() {
   const [migrationNeeded, setMigrationNeeded] = useState(false)
   const [entryFee, setEntryFee] = useState<number>(100)
   const [savingEntryFee, setSavingEntryFee] = useState(false)
+  const [resettingKnockout, setResettingKnockout] = useState(false)
+  const [resetKnockoutMsg, setResetKnockoutMsg] = useState('')
   const [notifTitle, setNotifTitle] = useState('')
   const [notifBody, setNotifBody] = useState('')
   const [notifUrl, setNotifUrl] = useState('')
@@ -441,6 +443,45 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
+        {/* Reset Mata-mata */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-red-400" />
+              <h2 className="text-sm font-semibold text-white">Resetar Mata-mata</h2>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-gray-400">
+              Apaga todas as previsões de mata-mata de todos os participantes. Use quando precisar redesenhar o bracket.
+            </p>
+            {resetKnockoutMsg && (
+              <p className="text-xs text-emerald-400">{resetKnockoutMsg}</p>
+            )}
+            <Button
+              variant="outline"
+              fullWidth
+              loading={resettingKnockout}
+              onClick={async () => {
+                if (!confirm('Tem certeza? Isso apagará todas as previsões de mata-mata de todos os usuários.')) return
+                setResettingKnockout(true)
+                setResetKnockoutMsg('')
+                try {
+                  const res = await fetch('/api/admin/reset-knockout', { method: 'DELETE' })
+                  const data = await res.json()
+                  if (res.ok) setResetKnockoutMsg(`✓ ${data.deleted} previsões apagadas.`)
+                  else setResetKnockoutMsg(`Erro: ${data.error}`)
+                } finally {
+                  setResettingKnockout(false)
+                }
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 text-red-400" />
+              Limpar todas as previsões de mata-mata
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Scoring Rules */}
         {rules && (
           <Card>
@@ -459,7 +500,7 @@ export default function AdminPage() {
                 { key: 'finalist_points', label: 'Finalista (pts)' },
                 { key: 'champion_points', label: 'Campeão (pts)' },
                 { key: 'top_scorer_points', label: 'Artilheiro (pts)' },
-                { key: 'prediction_deadline_hours', label: 'Prazo (horas antes)' },
+                { key: 'prediction_deadline_hours', label: 'Prazo antecipado (horas — ex: 0.167 = 10min)' },
               ] as const).map(({ key, label }) => (
                 <div key={key} className="flex items-center justify-between gap-3">
                   <label className="text-sm text-gray-300">{label}</label>

@@ -55,10 +55,11 @@ export async function POST(request: Request) {
     }
 
     const match = matchResult.data
-    const deadlineHours = rulesResult.data?.prediction_deadline_hours || 1
+    // prediction_deadline_hours está em horas no banco; convertemos para minutos
+    const deadlineMinutes = (rulesResult.data?.prediction_deadline_hours ?? (10 / 60)) * 60
 
     // Verificar prazo (backend validation)
-    if (isPredictionLocked(match, deadlineHours)) {
+    if (isPredictionLocked(match, deadlineMinutes)) {
       return NextResponse.json(
         { error: 'Prazo para palpite encerrado' },
         { status: 400 }

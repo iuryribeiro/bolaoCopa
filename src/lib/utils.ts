@@ -1,6 +1,6 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { formatDistanceToNow, isAfter, addHours } from 'date-fns'
+import { formatDistanceToNow, isAfter, addMinutes } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { Match, MatchStatus } from '@/types'
 
@@ -33,9 +33,9 @@ export function formatRelativeTime(dateStr: string): string {
   return formatDistanceToNow(new Date(dateStr), { locale: ptBR, addSuffix: true })
 }
 
-export function isPredictionLocked(match: Match, deadlineHours = 1): boolean {
+export function isPredictionLocked(match: Match, deadlineMinutes = 10): boolean {
   const matchDate = new Date(match.match_date)
-  const deadline = addHours(matchDate, -deadlineHours)
+  const deadline = addMinutes(matchDate, -deadlineMinutes)
   return isAfter(new Date(), deadline) || isMatchInProgress(match.status) || isMatchFinished(match.status)
 }
 
