@@ -70,6 +70,7 @@ const KNOCKOUT_STAGES: Stage[] = [
   'Round of 16',
   'Quarter-finals',
   'Semi-finals',
+  '3rd Place Final',
   'Final',
 ]
 
@@ -78,16 +79,18 @@ const STAGE_LABELS: Record<string, string> = {
   'Round of 16':    'Oitavas de Final',
   'Quarter-finals': 'Quartas de Final',
   'Semi-finals':    'Semifinais',
+  '3rd Place Final':'Disputa de 3º Lugar',
   'Final':          'Final',
 }
 
-// Labels de jogo por estágio (para exibir "J73", "J89", "SF1", etc.)
+// Labels de jogo por estágio
 const MATCH_LABELS: Record<string, string[]> = {
   'Round of 32':    ['J73','J74','J75','J76','J77','J78','J79','J80','J81','J82','J83','J84','J85','J86','J87','J88'],
   'Round of 16':    ['J89','J90','J91','J92','J93','J94','J95','J96'],
   'Quarter-finals': ['J97','J98','J99','J100'],
   'Semi-finals':    ['J101','J102'],
-  'Final':          ['J103'],
+  '3rd Place Final':['J103'],
+  'Final':          ['J104'],
 }
 
 interface TeamOption {
@@ -169,6 +172,26 @@ function buildBracket(
       ? virtualSlots('Semi-finals', QF_TO_SF, qf, picks)
       : []
 
+  // J103 — Disputa de 3º lugar: perdedores das semis
+  const third = actual('3rd Place Final').length > 0
+    ? actualSlots(actual('3rd Place Final'), '3rd Place Final')
+    : sf.length >= 2
+      ? (() => {
+          const sf0 = sf[0], sf1 = sf[1]
+          const pick0 = picks.get(sf0.ref), pick1 = picks.get(sf1.ref)
+          const loser0 = pick0 ? (pick0.id === sf0.home?.id ? sf0.away : sf0.home) : null
+          const loser1 = pick1 ? (pick1.id === sf1.home?.id ? sf1.away : sf1.home) : null
+          return [{
+            ref: 'virtual-3rd Place Final-0',
+            stage: '3rd Place Final' as Stage,
+            label: 'J103',
+            home: loser0,
+            away: loser1,
+          }]
+        })()
+      : []
+
+  // J104 — Final: vencedores das semis
   const fin = actual('Final').length > 0
     ? actualSlots(actual('Final'), 'Final')
     : sf.length > 0
@@ -180,9 +203,9 @@ function buildBracket(
     'Round of 16': r16,
     'Quarter-finals': qf,
     'Semi-finals': sf,
+    '3rd Place Final': third,
     'Final': fin,
     'Group Stage': [],
-    '3rd Place Final': [],
   }
 }
 
