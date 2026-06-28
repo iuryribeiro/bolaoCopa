@@ -22,8 +22,8 @@ import type { Match, Stage } from '@/types'
 //   idx 12 = J85  | idx 13 = J86  | idx 14 = J87  | idx 15 = J88
 //
 // OITAVAS — cada par [a, b] = índices dos jogos da Rodada de 32:
-//   slot 0 → J89  = J73[0]  x J75[2]   ← [0, 2]
-//   slot 1 → J90  = J74[1]  x J77[4]   ← [1, 4]
+//   slot 0 → J89  = J74[1]  x J77[4]   ← [1, 4]
+//   slot 1 → J90  = J73[0]  x J75[2]   ← [0, 2]
 //   slot 2 → J91  = J76[3]  x J78[5]   ← [3, 5]
 //   slot 3 → J92  = J79[6]  x J80[7]   ← [6, 7]
 //   slot 4 → J93  = J83[10] x J84[11]  ← [10, 11]
@@ -51,8 +51,8 @@ import type { Match, Stage } from '@/types'
 
 // Pairings: índices dos slots da fase ANTERIOR que se enfrentam
 const OITAVAS_PAIRS: [number, number][] = [
-  [0,  2],  // slot 0 → J89  = J73 x J75
-  [1,  4],  // slot 1 → J90  = J74 x J77
+  [1,  4],  // slot 0 → J89  = J74 x J77
+  [0,  2],  // slot 1 → J90  = J73 x J75
   [3,  5],  // slot 2 → J91  = J76 x J78
   [6,  7],  // slot 3 → J92  = J79 x J80
   [10, 11], // slot 4 → J93  = J83 x J84
