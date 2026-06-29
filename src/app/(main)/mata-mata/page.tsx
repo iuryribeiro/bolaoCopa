@@ -82,12 +82,7 @@ interface BracketSlot {
 }
 
 function isSlotLocked(slot: BracketSlot, globalLocked: boolean): boolean {
-  if (globalLocked) return true
-  if (!slot.match_date) return false  // slot virtual — sem prazo fixo
-  const FINISHED = ['FT','AET','PEN','AWD','WO','1H','HT','2H','ET','P','BT','LIVE']
-  if (slot.match_status && FINISHED.includes(slot.match_status)) return true
-  const deadline = new Date(new Date(slot.match_date).getTime() - 10 * 60 * 1000)
-  return new Date() > deadline
+  return globalLocked
 }
 
 function isReal(t: TeamOption | null | undefined): t is TeamOption { return !!t && t.id > 0 }

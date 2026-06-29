@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { isPredictionLocked } from '@/lib/utils'
 
 export async function GET(request: Request) {
   try {
@@ -41,24 +40,6 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const { predictions } = body
-
-    // Verificar prazo de 10 min para partidas reais (refs não-virtuais são UUIDs)
-    const realRefs = (predictions as Array<{ match_reference: string }>)
-      .map(p => p.match_reference)
-      .filter(ref => !ref.startsWith('virtual-'))
-
-    if (realRefs.length > 0) {
-      const { data: matchRows } = await supabase
-        .from('matches')
-        .select('id, match_date, status')
-        .in('id', realRefs)
-
-      for (const match of (matchRows || [])) {
-        if (isPredictionLocked(match as Parameters<typeof isPredictionLocked>[0])) {
-          return NextResponse.json({ error: 'Prazo encerrado — menos de 10 minutos para o jogo' }, { status: 400 })
-        }
-      }
-    }
 
     // Upsert cada previsão
     const { data, error } = await supabase
