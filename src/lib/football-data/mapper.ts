@@ -39,22 +39,57 @@ export function mapFDGroupName(group: string | null): string | null {
 }
 
 export function mapFDMatchToSupabase(match: FDMatch) {
-  const status = mapFDStatus(match.status)
+  const baseStatus = mapFDStatus(match.status)
+
+  // Para partidas encerradas, refinamos o status conforme score.duration
+  // FINISHED + EXTRA_TIME     → AET (após prorrogação)
+  // FINISHED + PENALTY_SHOOTOUT → PEN (após pênaltis)
+  let status: MatchStatus = baseStatus
+  if (baseStatus === 'FT') {
+    if (match.score.duration === 'EXTRA_TIME')       status = 'AET'
+    else if (match.score.duration === 'PENALTY_SHOOTOUT') status = 'PEN'
+  }
+
   const isFinished = ['FT', 'AET', 'PEN', 'AWD'].includes(status)
+  const isLiveNow  = ['LIVE', 'IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT'].includes(match.status)
 
-  const isLiveNow = ['LIVE', 'IN_PLAY', 'PAUSED', 'EXTRA_TIME', 'PENALTY_SHOOTOUT'].includes(match.status)
+  // ── Placar dos 90 minutos (apenas 1º + 2º tempo) ──────────────────────────
+  //
+  // Prioridade para obter o placar dos 90 min:
+  //   1. score.regularTime — retornado pela API quando existe separação
+  //   2. score.fullTime    — para PEN é o placar empatado (= 90 min) ✓
+  //                          para AET inclui gols da prorrogação    ✗
+  //   3. Durante o jogo:  fullTime ao vivo (pode ser null → fallback halfTime)
+  //
+  const reg = match.score.regularTime
 
-  const homeScore = isFinished
-    ? match.score.fullTime.home
-    : isLiveNow
-      ? match.score.fullTime.home ?? match.score.halfTime.home
-      : null
+  let homeScore: number | null = null
+  let awayScore: number | null = null
 
-  const awayScore = isFinished
-    ? match.score.fullTime.away
-    : isLiveNow
-      ? match.score.fullTime.away ?? match.score.halfTime.away
-      : null
+  if (isFinished) {
+    if (reg) {
+      // API forneceu o placar dos 90 min explicitamente
+      homeScore = reg.home
+      awayScore = reg.away
+    } else if (status === 'PEN') {
+      // Nos pênaltis o jogo estava empatado — fullTime é o placar empatado (90+120 min, sem gols de ET)
+      homeScore = match.score.fullTime.home
+      awayScore = match.score.fullTime.away
+    } else if (status === 'AET') {
+      // Prorrogação: fullTime pode incluir gol da ET.
+      // Usamos fullTime porque não há outro campo disponível;
+      // se o site passar a receber regularTime, este bloco ficará inativo.
+      homeScore = match.score.fullTime.home
+      awayScore = match.score.fullTime.away
+    } else {
+      // FT normal (90 min)
+      homeScore = match.score.fullTime.home
+      awayScore = match.score.fullTime.away
+    }
+  } else if (isLiveNow) {
+    homeScore = match.score.fullTime.home ?? match.score.halfTime.home
+    awayScore = match.score.fullTime.away ?? match.score.halfTime.away
+  }
 
   let winnerTeamId: number | null = null
   if (match.score.winner === 'HOME_TEAM') winnerTeamId = match.homeTeam.id

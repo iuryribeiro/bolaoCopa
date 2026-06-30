@@ -80,10 +80,18 @@ export function MatchCard({ match, prediction, showPrediction = true, compact = 
         {/* Score / VS */}
         <div className="flex flex-col items-center gap-1 px-2">
           {hasScore ? (
-            <div className={cn('flex items-center gap-2 text-2xl font-bold', live ? 'text-green-400' : 'text-white')}>
-              <span>{match.home_score}</span>
-              <span className="text-gray-500 text-base">×</span>
-              <span>{match.away_score}</span>
+            <div className="flex flex-col items-center gap-0.5">
+              <div className={cn('flex items-center gap-2 text-2xl font-bold', live ? 'text-green-400' : 'text-white')}>
+                <span>{match.home_score}</span>
+                <span className="text-gray-500 text-base">×</span>
+                <span>{match.away_score}</span>
+              </div>
+              {match.status === 'AET' && (
+                <span className="text-[10px] text-yellow-400/80 font-medium tracking-wide">AP</span>
+              )}
+              {match.status === 'PEN' && (
+                <span className="text-[10px] text-orange-400/80 font-medium tracking-wide">PENS</span>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center gap-0.5">
