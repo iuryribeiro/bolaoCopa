@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Image from 'next/image'
-import { GitBranch, Trophy, Lock, Info, Check, Loader2 } from 'lucide-react'
+import { GitBranch, Trophy, Lock, Info, Check, Loader2, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/Loading'
+import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/utils'
 import { translateTeamName } from '@/lib/team-names'
 import type { Match, Stage } from '@/types'
@@ -87,6 +88,18 @@ function isSlotLocked(slot: BracketSlot, globalLocked: boolean): boolean {
 
 function isReal(t: TeamOption | null | undefined): t is TeamOption { return !!t && t.id > 0 }
 
+// Valida se um pick ainda é compatível com o slot onde ele deve jogar.
+// Se ambos os times do slot são conhecidos mas o pick não é nenhum deles, o pick está
+// obsoleto (bracket mudou) e deve ser ignorado para não propagar o time errado.
+// Se qualquer time do slot ainda é TBD (null), não valida — não há dados suficientes.
+function validatedPick(pick: TeamOption | null | undefined, slot: BracketSlot): TeamOption | null {
+  if (!pick) return null
+  if (isReal(slot.home) && isReal(slot.away)) {
+    if (slot.home.id !== pick.id && slot.away.id !== pick.id) return null
+  }
+  return pick
+}
+
 function teamOf(m: Match, side: 'home' | 'away'): TeamOption {
   return side === 'home'
     ? { id: m.home_team_id, name: translateTeamName(m.home_team_name), logo: m.home_team_logo }
@@ -129,26 +142,39 @@ function fromPicks(
 function buildBracket(actualMatches: Match[], picks: Map<string, TeamOption>): Record<Stage, BracketSlot[]> {
   const real = (s: Stage) => actualMatches.filter(m => m.stage === s)
 
-  const r32: BracketSlot[] = real('Round of 32').length > 0
+  // Só usa fromActual quando o estágio tem TODOS os jogos esperados com times reais.
+  // Evita que 3 jogos de oitavas já cadastrados ativem fromActual prematuramente.
+  const EXPECTED: Partial<Record<Stage, number>> = {
+    'Round of 32': 16, 'Round of 16': 8, 'Quarter-finals': 4,
+    'Semi-finals': 2, '3rd Place Final': 1, 'Final': 1,
+  }
+  const stageReady = (s: Stage) => {
+    const exp = EXPECTED[s] ?? 1
+    const ms = real(s)
+    return ms.length >= exp && ms.every(m => (m.home_team_id || 0) > 0 && (m.away_team_id || 0) > 0)
+  }
+
+  const r32: BracketSlot[] = stageReady('Round of 32')
     ? fromActual(real('Round of 32'), 'Round of 32', R32_LABELS)
     : []
 
-  const r16: BracketSlot[] = real('Round of 16').length > 0
+  const r16: BracketSlot[] = stageReady('Round of 16')
     ? fromActual(real('Round of 16'), 'Round of 16', R16_LABELS)
     : r32.length > 0 ? fromPicks('Round of 16', OITAVAS_PAIRS, r32, picks, R16_LABELS) : []
 
-  const qf: BracketSlot[] = real('Quarter-finals').length > 0
+  const qf: BracketSlot[] = stageReady('Quarter-finals')
     ? fromActual(real('Quarter-finals'), 'Quarter-finals', QF_LABELS)
     : r16.length > 0 ? fromPicks('Quarter-finals', QUARTAS_PAIRS, r16, picks, QF_LABELS) : []
 
-  const sf: BracketSlot[] = real('Semi-finals').length > 0
+  const sf: BracketSlot[] = stageReady('Semi-finals')
     ? fromActual(real('Semi-finals'), 'Semi-finals', SF_LABELS)
     : qf.length > 0 ? fromPicks('Semi-finals', SEMIS_PAIRS, qf, picks, SF_LABELS) : []
 
-  const third: BracketSlot[] = real('3rd Place Final').length > 0
+  const third: BracketSlot[] = stageReady('3rd Place Final')
     ? fromActual(real('3rd Place Final'), '3rd Place Final', ['3º'])
     : sf.length >= 2 ? [(() => {
-        const p0 = picks.get(sf[0].ref), p1 = picks.get(sf[1].ref)
+        const p0 = picks.get(sf[0].ref) ?? null
+        const p1 = picks.get(sf[1].ref) ?? null
         return {
           ref: 'virtual-3rd-0', stage: '3rd Place Final' as Stage, label: '3º Lugar',
           home: p0 ? (p0.id === sf[0].home?.id ? sf[0].away : sf[0].home) : null,
@@ -156,7 +182,7 @@ function buildBracket(actualMatches: Match[], picks: Map<string, TeamOption>): R
         }
       })()] : []
 
-  const fin: BracketSlot[] = real('Final').length > 0
+  const fin: BracketSlot[] = stageReady('Final')
     ? fromActual(real('Final'), 'Final', ['Final'])
     : sf.length > 0 ? fromPicks('Final', FINAL_PAIRS, sf, picks, ['Final']) : []
 
@@ -165,6 +191,37 @@ function buildBracket(actualMatches: Match[], picks: Map<string, TeamOption>): R
     'Semi-finals': sf, '3rd Place Final': third, 'Final': fin, 'Group Stage': [],
   }
 }
+
+// =============================================================================
+// TIPOS — GALERA
+// =============================================================================
+
+interface GaleraPick {
+  stage: string
+  match_reference: string
+  predicted_team_id: number
+  predicted_team_name: string
+  predicted_team_logo: string | null
+}
+
+interface GaleraParticipant {
+  user_id: string
+  name: string
+  avatar_url: string | null
+  picks: GaleraPick[]
+}
+
+const STAGE_ORDER: Stage[] = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semi-finals', 'Final', '3rd Place Final']
+const STAGE_PT: Record<string, string> = {
+  'Round of 32':    '32 avos',
+  'Round of 16':    'Oitavas',
+  'Quarter-finals': 'Quartas',
+  'Semi-finals':    'Semifinal',
+  'Final':          'Final',
+  '3rd Place Final':'3º Lugar',
+}
+
+type Tab = 'simular' | 'galera'
 
 // =============================================================================
 // COMPONENTE PRINCIPAL
@@ -178,6 +235,11 @@ export default function MataMataPage() {
   const [savingRef, setSavingRef]         = useState<string | null>(null)
   const [championPred, setChampionPred]   = useState<TeamOption | null>(null)
   const [savingChampion, setSavingChampion] = useState(false)
+  const [tab, setTab]                     = useState<Tab>('simular')
+  const [participants, setParticipants]   = useState<GaleraParticipant[]>([])
+  const [galeraLoading, setGaleraLoading] = useState(false)
+  const [galeraLoaded, setGaleraLoaded]   = useState(false)
+  const [resetting, setResetting]         = useState(false)
 
   const bracket = useMemo(() => buildBracket(actualMatches, picks), [actualMatches, picks])
 
@@ -214,6 +276,23 @@ export default function MataMataPage() {
     })()
   }, [])
 
+  const loadGalera = async () => {
+    if (galeraLoaded) return
+    setGaleraLoading(true)
+    try {
+      const res = await fetch('/api/knockout-predictions/galera')
+      const data = await res.json()
+      setParticipants(data.participants || [])
+      setGaleraLoaded(true)
+    } catch (err) { console.error(err) }
+    finally { setGaleraLoading(false) }
+  }
+
+  const handleTab = (t: Tab) => {
+    setTab(t)
+    if (t === 'galera') loadGalera()
+  }
+
   const handlePick = async (slot: BracketSlot, team: TeamOption) => {
     if (locked || !isReal(team)) return
     const prev = picks.get(slot.ref)
@@ -239,6 +318,21 @@ export default function MataMataPage() {
     } finally { setSavingChampion(false) }
   }
 
+  const handleReset = async () => {
+    if (resetting || !confirm('Isso vai apagar seus palpites de oitavas em diante. Os 32avos continuam. Confirma?')) return
+    setResetting(true)
+    try {
+      await fetch('/api/knockout-predictions', { method: 'DELETE' })
+      setPicks(cur => {
+        const n = new Map(cur)
+        for (const key of Array.from(n.keys())) {
+          if (key.startsWith('virtual-')) n.delete(key)
+        }
+        return n
+      })
+    } finally { setResetting(false) }
+  }
+
   const r32 = bracket['Round of 32'] ?? []
   const r16 = bracket['Round of 16'] ?? []
   const qf  = bracket['Quarter-finals'] ?? []
@@ -252,6 +346,7 @@ export default function MataMataPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center gap-3">
         <GitBranch className="w-6 h-6 text-purple-400" />
         <div>
@@ -261,75 +356,222 @@ export default function MataMataPage() {
         {locked && <Lock className="w-4 h-4 text-red-400 ml-auto" />}
       </div>
 
-      {locked ? (
-        <div className="flex items-center gap-2 text-gray-400 text-sm p-3 bg-white/5 rounded-lg border border-white/10">
-          <Lock className="w-4 h-4" /> Previsões bloqueadas
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-purple-400 text-sm p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
-          <Info className="w-4 h-4 shrink-0" /> Toque no time para avançá-lo à próxima fase.
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-2">
+        {([
+          { key: 'simular' as Tab, label: 'Meu bracket', icon: GitBranch },
+          { key: 'galera'  as Tab, label: `Galera${participants.length > 0 ? ` (${participants.length})` : ''}`, icon: Users },
+        ]).map(({ key, label, icon: Icon }) => (
+          <button key={key} onClick={() => handleTab(key)}
+            className={cn(
+              'flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium transition-all border',
+              tab === key
+                ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+                : 'bg-white/5 text-gray-400 hover:text-white border-white/10'
+            )}>
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── ABA: MEU BRACKET ── */}
+      {tab === 'simular' && (
+        <>
+          {locked ? (
+            <div className="flex items-center gap-2 text-gray-400 text-sm p-3 bg-white/5 rounded-lg border border-white/10">
+              <Lock className="w-4 h-4" /> Previsões bloqueadas
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-purple-400 text-sm p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
+              <Info className="w-4 h-4 shrink-0" /> <span className="flex-1">Toque no time para avançá-lo à próxima fase.</span>
+              <button onClick={handleReset} disabled={resetting}
+                className="ml-auto shrink-0 text-[10px] text-orange-400 hover:text-orange-300 border border-orange-500/30 rounded px-2 py-0.5 disabled:opacity-50">
+                {resetting ? 'Limpando…' : 'Refazer oitavas em diante'}
+              </button>
+            </div>
+          )}
+
+          {loading ? (
+            <LoadingSpinner />
+          ) : r32.length === 0 ? (
+            <div className="text-center py-12">
+              <GitBranch className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+              <p className="text-gray-400">Mata-mata ainda não disponível</p>
+              <p className="text-gray-600 text-sm mt-1">Disponível após a fase de grupos</p>
+            </div>
+          ) : (
+            <>
+              <BracketView
+                r32={r32} r16={r16} qf={qf} sf={sf} fin={fin} trd={trd}
+                picks={picks} locked={locked} savingRef={savingRef} onPick={handlePick}
+              />
+
+              <div className="space-y-2 mt-2">
+                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Campeão</h2>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-yellow-400" />
+                      <span className="text-sm font-semibold text-white">Campeão da Copa do Mundo 2026</span>
+                      <Badge variant="yellow">+10 pts</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {championPred ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          {championPred.logo && <Image src={championPred.logo} alt={championPred.name} width={40} height={40} className="object-contain" />}
+                          <div>
+                            <p className="text-white font-semibold">{translateTeamName(championPred.name)}</p>
+                            <p className="text-xs text-gray-400">Sua escolha de campeão</p>
+                          </div>
+                        </div>
+                        {!locked && <Button variant="ghost" size="sm" onClick={() => setChampionPred(null)}>Alterar</Button>}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-gray-400 text-sm">{locked ? 'Prazo encerrado' : 'Escolha o campeão:'}</p>
+                        {!locked && allTeams.length > 0 && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {allTeams.map(team => (
+                              <button key={team.id} onClick={() => handleChampion(team)} disabled={savingChampion}
+                                className="flex items-center gap-2 p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-left">
+                                {team.logo && <Image src={team.logo} alt={team.name} width={24} height={24} className="object-contain shrink-0" />}
+                                <span className="text-xs text-gray-300 truncate">{team.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </>
       )}
 
-      {loading ? (
-        <LoadingSpinner />
-      ) : r32.length === 0 ? (
-        <div className="text-center py-12">
-          <GitBranch className="w-10 h-10 mx-auto mb-3 text-gray-600" />
-          <p className="text-gray-400">Mata-mata ainda não disponível</p>
-          <p className="text-gray-600 text-sm mt-1">Disponível após a fase de grupos</p>
-        </div>
-      ) : (
-        <>
-          <BracketView
-            r32={r32} r16={r16} qf={qf} sf={sf} fin={fin} trd={trd}
-            picks={picks} locked={locked} savingRef={savingRef} onPick={handlePick}
-          />
+      {/* ── ABA: GALERA ── */}
+      {tab === 'galera' && (
+        <GaleraView participants={participants} loading={galeraLoading} />
+      )}
+    </div>
+  )
+}
 
-          <div className="space-y-2 mt-2">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">Campeão</h2>
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-yellow-400" />
-                  <span className="text-sm font-semibold text-white">Campeão da Copa do Mundo 2026</span>
-                  <Badge variant="yellow">+10 pts</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {championPred ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {championPred.logo && <Image src={championPred.logo} alt={championPred.name} width={40} height={40} className="object-contain" />}
-                      <div>
-                        <p className="text-white font-semibold">{translateTeamName(championPred.name)}</p>
-                        <p className="text-xs text-gray-400">Sua escolha de campeão</p>
+// =============================================================================
+// GALERA VIEW
+// =============================================================================
+
+function GaleraView({ participants, loading }: { participants: GaleraParticipant[]; loading: boolean }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  if (loading) return <LoadingSpinner />
+
+  if (participants.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <Users className="w-10 h-10 mx-auto mb-3 text-gray-600" />
+        <p className="text-gray-400">Nenhum palpite registrado ainda</p>
+      </div>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-semibold text-white">Palpites da galera</span>
+          <Badge variant="gray">{participants.length}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y divide-white/5">
+          {participants.map(p => {
+            const isOpen = expanded === p.user_id
+
+            // Pega o palpite mais avançado para exibir em destaque
+            const picksByStage = new Map<string, GaleraPick[]>()
+            for (const pick of p.picks) {
+              if (!picksByStage.has(pick.stage)) picksByStage.set(pick.stage, [])
+              picksByStage.get(pick.stage)!.push(pick)
+            }
+
+            // Destaque: Final → Semifinal → Quartas → Oitavas → 32 avos
+            const highlightStage = ['Final', 'Semi-finals', 'Quarter-finals', 'Round of 16', 'Round of 32']
+              .find(s => picksByStage.has(s))
+            const highlightPicks = highlightStage ? picksByStage.get(highlightStage) ?? [] : []
+
+            return (
+              <div key={p.user_id}>
+                {/* Linha principal */}
+                <button
+                  onClick={() => setExpanded(isOpen ? null : p.user_id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-all text-left"
+                >
+                  <Avatar src={p.avatar_url} name={p.name} size="sm" />
+                  <span className="text-sm font-medium text-white flex-1 min-w-0 truncate">{p.name}</span>
+
+                  {/* Destaques */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {highlightPicks.slice(0, 2).map((pick, i) => (
+                      <div key={i} className="flex items-center gap-1">
+                        {pick.predicted_team_logo
+                          ? <Image src={pick.predicted_team_logo} alt={pick.predicted_team_name} width={18} height={18} className="object-contain" />
+                          : <div className="w-4 h-4 rounded-sm bg-white/10" />}
+                        <span className="text-[10px] text-gray-300 hidden sm:inline truncate max-w-[60px]">
+                          {translateTeamName(pick.predicted_team_name)}
+                        </span>
                       </div>
-                    </div>
-                    {!locked && <Button variant="ghost" size="sm" onClick={() => setChampionPred(null)}>Alterar</Button>}
+                    ))}
+                    {highlightStage && (
+                      <span className="text-[9px] text-purple-400 font-medium ml-1">
+                        {STAGE_PT[highlightStage] ?? highlightStage}
+                      </span>
+                    )}
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-gray-400 text-sm">{locked ? 'Prazo encerrado' : 'Escolha o campeão:'}</p>
-                    {!locked && allTeams.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {allTeams.map(team => (
-                          <button key={team.id} onClick={() => handleChampion(team)} disabled={savingChampion}
-                            className="flex items-center gap-2 p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-left">
-                            {team.logo && <Image src={team.logo} alt={team.name} width={24} height={24} className="object-contain shrink-0" />}
-                            <span className="text-xs text-gray-300 truncate">{team.name}</span>
-                          </button>
-                        ))}
+
+                  {isOpen
+                    ? <ChevronUp className="w-4 h-4 text-gray-500 shrink-0" />
+                    : <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />}
+                </button>
+
+                {/* Expansão: todos os palpites por fase */}
+                {isOpen && (
+                  <div className="px-4 pb-3 space-y-3 bg-white/[0.02]">
+                    {STAGE_ORDER.filter(s => picksByStage.has(s)).map(stage => (
+                      <div key={stage}>
+                        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                          {STAGE_PT[stage] ?? stage}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {picksByStage.get(stage)!.map((pick, i) => (
+                            <div key={i} className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2.5 py-1.5 border border-white/10">
+                              {pick.predicted_team_logo
+                                ? <Image src={pick.predicted_team_logo} alt={pick.predicted_team_name} width={16} height={16} className="object-contain shrink-0" />
+                                : <div className="w-4 h-4 rounded-sm bg-white/10 shrink-0" />}
+                              <span className="text-xs text-white">
+                                {translateTeamName(pick.predicted_team_name)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                    ))}
+                    {p.picks.length === 0 && (
+                      <p className="text-xs text-gray-600 italic">Sem palpites ainda</p>
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      )}
-    </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

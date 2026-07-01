@@ -22,6 +22,25 @@ export async function GET(request: Request) {
   }
 }
 
+export async function DELETE() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+    const { error, count } = await supabase
+      .from('knockout_predictions')
+      .delete({ count: 'exact' })
+      .eq('user_id', user.id)
+      .like('match_reference', 'virtual-%')
+
+    if (error) throw error
+    return NextResponse.json({ deleted: count ?? 0 })
+  } catch {
+    return NextResponse.json({ error: 'Erro ao limpar palpites' }, { status: 500 })
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
