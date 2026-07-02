@@ -117,22 +117,11 @@ export async function POST(request: Request) {
         fdMatches = (await footballData.getMatches()).data
       }
 
-      // Jogos que já têm placar no banco (manual ou sync anterior) — não sobrescrever
-      const { data: alreadyScored } = await adminSupabase
-        .from('matches')
-        .select('api_fixture_id')
-        .not('home_score', 'is', null)
-        .not('away_score', 'is', null)
-      const scoredIds = new Set((alreadyScored || []).map((m: { api_fixture_id: number }) => m.api_fixture_id))
-
       const errors: string[] = []
 
       for (const fdMatch of fdMatches) {
         // Times ainda não definidos (fases eliminatórias futuras) — pular
         if (!fdMatch.homeTeam?.id || !fdMatch.awayTeam?.id) continue
-
-        // Já tem placar no banco — pular para não sobrescrever valor manual
-        if (scoredIds.has(fdMatch.id)) continue
 
         const matchData = mapFDMatchToSupabase(fdMatch)
         const isFinishedNoScore = ['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)
