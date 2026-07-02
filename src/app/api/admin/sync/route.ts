@@ -167,6 +167,27 @@ export async function POST(request: Request) {
           const { data: match } = await adminSupabase
             .from('matches').select('id').eq('api_fixture_id', fdMatch.id).single()
           if (match) {
+            // Score knockout predictions for this match
+            if (matchData.winner_team_id) {
+              const { data: rules } = await adminSupabase
+                .from('scoring_rules')
+                .select('knockout_advance_points, finalist_points')
+                .eq('is_active', true)
+                .single()
+              const stagePoints = matchData.stage === 'Semi-finals'
+                ? (rules?.finalist_points ?? 2)
+                : (rules?.knockout_advance_points ?? 1)
+              await Promise.all([
+                adminSupabase.from('knockout_predictions')
+                  .update({ is_correct: true, points: stagePoints, updated_at: new Date().toISOString() })
+                  .eq('match_reference', match.id)
+                  .eq('predicted_team_id', matchData.winner_team_id),
+                adminSupabase.from('knockout_predictions')
+                  .update({ is_correct: false, points: 0, updated_at: new Date().toISOString() })
+                  .eq('match_reference', match.id)
+                  .neq('predicted_team_id', matchData.winner_team_id),
+              ])
+            }
             await adminSupabase.rpc('recalculate_match_points', { p_match_id: match.id })
           }
         }

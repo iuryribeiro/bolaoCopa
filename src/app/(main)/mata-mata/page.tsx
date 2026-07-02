@@ -78,8 +78,9 @@ interface TeamOption { id: number; name: string; logo: string | null }
 interface BracketSlot {
   ref: string; stage: Stage; label: string
   home: TeamOption | null; away: TeamOption | null
-  match_date?: string  // undefined para slots virtuais
+  match_date?: string
   match_status?: string
+  winner_team_id?: number | null  // definido apenas para slots com jogo real encerrado
 }
 
 function isSlotLocked(slot: BracketSlot, globalLocked: boolean): boolean {
@@ -122,6 +123,7 @@ function fromActual(matches: Match[], stage: Stage, labels: string[]): BracketSl
     home: teamOf(m, 'home'), away: teamOf(m, 'away'),
     match_date: m.match_date,
     match_status: m.status,
+    winner_team_id: m.winner_team_id,
   }))
 }
 
@@ -674,33 +676,48 @@ function MatchCard({ slot, pick, locked, saving, onPick }: {
   onPick: (slot: BracketSlot, team: TeamOption) => void
 }) {
   const slotLocked = isSlotLocked(slot, locked)
-  const canPick = !slotLocked && isReal(slot.home) && isReal(slot.away)
+  const hasResult  = (slot.winner_team_id ?? null) !== null
+  const canPick    = !slotLocked && !hasResult && isReal(slot.home) && isReal(slot.away)
 
   return (
-    <div className="rounded border border-white/10 overflow-hidden bg-gray-900 w-full">
+    <div className={cn(
+      'rounded border overflow-hidden bg-gray-900 w-full',
+      hasResult ? 'border-white/20' : 'border-white/10',
+    )}>
       <div className="px-1 py-0.5 text-[7px] font-bold text-gray-600 uppercase tracking-wider border-b border-white/5 leading-none">
         {slot.label}
       </div>
       {([slot.home, slot.away] as const).map((team, i) => {
-        const real   = isReal(team)
-        const picked = real && pick?.id === team.id
+        const real      = isReal(team)
+        const picked    = real && pick?.id === team.id
+        const isWinner  = hasResult && real && team.id === slot.winner_team_id
+        const isLoser   = hasResult && real && team.id !== slot.winner_team_id
+        const correct   = picked && isWinner
+        const wrong     = picked && isLoser
+
         return (
           <button key={i} disabled={!canPick || !real}
             onClick={() => real && team && onPick(slot, team)}
             className={cn(
               'w-full flex items-center gap-1 px-1 py-1 text-left transition-all',
               i === 1 && 'border-t border-white/5',
-              picked ? 'bg-emerald-500/25 text-emerald-300' : 'text-gray-300',
+              correct ? 'bg-emerald-500/25 text-emerald-300' :
+              wrong   ? 'bg-red-500/20 text-red-400' :
+              picked  ? 'bg-emerald-500/25 text-emerald-300' : 'text-gray-300',
+              isWinner && !picked ? 'font-semibold text-white' : '',
+              isLoser  && !picked ? 'opacity-40' : '',
               canPick && real ? 'hover:bg-white/10 cursor-pointer' : 'cursor-default',
             )}>
             {real && team.logo
-              ? <Image src={team.logo} alt={team.name} width={12} height={12} className="object-contain shrink-0" />
+              ? <Image src={team.logo} alt={team.name} width={12} height={12} className={cn('object-contain shrink-0', isLoser && !picked ? 'opacity-50' : '')} />
               : <div className="w-3 h-3 rounded-sm bg-white/10 shrink-0" />}
             <span className="text-[9px] truncate leading-tight flex-1 min-w-0">
               {team ? team.name : 'A definir'}
             </span>
-            {picked && !saving && <Check className="w-2 h-2 shrink-0 text-emerald-400" />}
-            {picked &&  saving && <Loader2 className="w-2 h-2 shrink-0 animate-spin" />}
+            {correct  && !saving && <Check className="w-2 h-2 shrink-0 text-emerald-400" />}
+            {wrong    && !saving && <span className="text-[8px] shrink-0 text-red-400">✕</span>}
+            {picked && !correct && !wrong && !saving && <Check className="w-2 h-2 shrink-0 text-emerald-400" />}
+            {picked   &&  saving && <Loader2 className="w-2 h-2 shrink-0 animate-spin" />}
           </button>
         )
       })}
