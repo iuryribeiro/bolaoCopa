@@ -167,6 +167,12 @@ export default function AdminPage() {
   }
 
   const handleSync = async (type: string) => {
+    let password: string | undefined
+    if (type === 'full') {
+      const pwd = prompt('Senha para sincronizar todos os jogos:')
+      if (!pwd) return
+      password = pwd
+    }
     setSyncing(true)
     setSyncMessage('')
     setSyncError(false)
@@ -174,7 +180,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, ...(password ? { password } : {}) }),
       })
       const data = await res.json()
 
@@ -353,10 +359,23 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="p-3 bg-white/5 rounded-lg text-xs text-gray-400 space-y-1">
-              <p className="flex items-center gap-2"><Database className="w-3 h-3" /> Sincronizar todos: <span className="text-white font-medium">1 req</span></p>
+              <p className="flex items-center gap-2"><Database className="w-3 h-3" /> Sincronizar jogos: <span className="text-green-400 font-medium">1 req</span> (recomendado)</p>
+              <p className="flex items-center gap-2"><Database className="w-3 h-3" /> Sincronizar todos: <span className="text-white font-medium">1 req</span> (requer senha)</p>
               <p className="flex items-center gap-2"><Database className="w-3 h-3" /> Atualizar ao vivo: <span className="text-white font-medium">1 req</span> (cache 2min)</p>
               <p className="flex items-center gap-2"><Database className="w-3 h-3" /> Artilheiros/Grupos: <span className="text-white font-medium">2 req</span> (cache 1h)</p>
             </div>
+
+            <Button
+              onClick={() => handleSync('today')}
+              loading={syncing}
+              variant="primary"
+              fullWidth
+              disabled={(usage?.remaining ?? 100) < 1}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Sincronizar jogos
+              <Badge variant="green">1 req</Badge>
+            </Button>
 
             <Button
               onClick={() => handleSync('full')}

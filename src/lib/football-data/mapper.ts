@@ -82,9 +82,9 @@ export function mapFDMatchToSupabase(match: FDMatch) {
       homeScore = match.score.fullTime.home
       awayScore = match.score.fullTime.away
     } else {
-      // FT normal (90 min)
-      homeScore = match.score.fullTime.home
-      awayScore = match.score.fullTime.away
+      // FT normal (90 min); fallback para halfTime se fullTime ainda não veio da API
+      homeScore = match.score.fullTime.home ?? match.score.halfTime.home
+      awayScore = match.score.fullTime.away ?? match.score.halfTime.away
     }
   } else if (isLiveNow) {
     homeScore = match.score.fullTime.home ?? match.score.halfTime.home

@@ -15,7 +15,14 @@ export async function POST(request: Request) {
     if (!profile?.is_admin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
 
     const adminSupabase = await createAdminClient()
-    const { type = 'full' } = await request.json().catch(() => ({}))
+    const { type = 'full', password } = await request.json().catch(() => ({}))
+
+    if (type === 'full') {
+      const FULL_SYNC_PASSWORD = process.env.FULL_SYNC_PASSWORD || '24Maghnetro*'
+      if (password !== FULL_SYNC_PASSWORD) {
+        return NextResponse.json({ error: 'Senha incorreta' }, { status: 403 })
+      }
+    }
 
     const usage = await getApiUsage()
     if (usage.remaining <= 0) {
@@ -85,22 +92,47 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: `${count} artilheiros sincronizados`, count, usage: updatedUsage })
       }
 
-      // --- Sync de jogos (full / live) ---
+      // --- Sync de jogos (full / live / today) ---
       if (type === 'live') {
         await invalidateCache(`fd:matches:live:${comp}`)
+      } else if (type === 'today') {
+        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+        const future    = new Date(); future.setDate(future.getDate() + 90)
+        const fmt = (d: Date) => d.toISOString().split('T')[0]
+        await invalidateCache(`fd:matches:${comp}:${fmt(yesterday)}:${fmt(future)}`)
       } else {
         await invalidateCache(`fd:matches:${comp}`)
       }
 
-      const fdMatches = type === 'live'
-        ? (await footballData.getLiveMatches()).data
-        : (await footballData.getMatches()).data
+      let fdMatches: Awaited<ReturnType<typeof footballData.getLiveMatches>>['data']
+      if (type === 'live') {
+        fdMatches = (await footballData.getLiveMatches()).data
+      } else if (type === 'today') {
+        // Busca de ontem em diante (sem limite superior) — cobre jogos futuros do torneio
+        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1)
+        const future    = new Date(); future.setDate(future.getDate() + 90)
+        const fmt = (d: Date) => d.toISOString().split('T')[0]
+        fdMatches = (await footballData.getMatchesByDate(fmt(yesterday), fmt(future))).data
+      } else {
+        fdMatches = (await footballData.getMatches()).data
+      }
+
+      // Jogos que já têm placar no banco (manual ou sync anterior) — não sobrescrever
+      const { data: alreadyScored } = await adminSupabase
+        .from('matches')
+        .select('api_fixture_id')
+        .not('home_score', 'is', null)
+        .not('away_score', 'is', null)
+      const scoredIds = new Set((alreadyScored || []).map((m: { api_fixture_id: number }) => m.api_fixture_id))
 
       const errors: string[] = []
 
       for (const fdMatch of fdMatches) {
         // Times ainda não definidos (fases eliminatórias futuras) — pular
         if (!fdMatch.homeTeam?.id || !fdMatch.awayTeam?.id) continue
+
+        // Já tem placar no banco — pular para não sobrescrever valor manual
+        if (scoredIds.has(fdMatch.id)) continue
 
         const matchData = mapFDMatchToSupabase(fdMatch)
         const isFinishedNoScore = ['FT', 'AET', 'PEN', 'AWD'].includes(matchData.status)

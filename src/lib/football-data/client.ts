@@ -67,6 +67,19 @@ export const footballData = {
     )
   },
 
+  // Jogos de um intervalo de datas — economiza quota buscando só os dias relevantes
+  async getMatchesByDate(dateFrom: string, dateTo: string): Promise<{ data: FDMatch[]; fromCache: boolean }> {
+    const cacheKey = `fd:matches:${COMPETITION}:${dateFrom}:${dateTo}`
+    return fetchWithCache(
+      cacheKey,
+      CACHE_TTL.LIVE, // cache curto (2min) para pegar resultados frescos
+      async () => {
+        const res = await fdFetch<FDMatchesResponse>(`/competitions/${COMPETITION}/matches`, { dateFrom, dateTo })
+        return res.matches
+      }
+    )
+  },
+
   // Jogos ao vivo — busca TODOS os jogos sem filtro de status (free tier compatível)
   // O cache de 2min garante dados frescos sem estourar a cota
   async getLiveMatches(): Promise<{ data: FDMatch[]; fromCache: boolean }> {
