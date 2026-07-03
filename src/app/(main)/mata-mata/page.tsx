@@ -84,7 +84,14 @@ interface BracketSlot {
 }
 
 function isSlotLocked(slot: BracketSlot, globalLocked: boolean): boolean {
-  return globalLocked
+  if (globalLocked) return true
+  if (!slot.match_date) return false  // slot virtual — sem prazo fixo
+  // Jogo já iniciado ou encerrado: mantém aberto (feature lançada com atraso)
+  const STARTED = ['FT','AET','PEN','AWD','WO','1H','HT','2H','ET','P','BT','LIVE']
+  if (slot.match_status && STARTED.includes(slot.match_status)) return false
+  // Jogo futuro: bloqueia quando faltam 10 min ou menos
+  const deadline = new Date(new Date(slot.match_date).getTime() - 10 * 60 * 1000)
+  return new Date() > deadline
 }
 
 function isReal(t: TeamOption | null | undefined): t is TeamOption { return !!t && t.id > 0 }
@@ -677,7 +684,7 @@ function MatchCard({ slot, pick, locked, saving, onPick }: {
 }) {
   const slotLocked = isSlotLocked(slot, locked)
   const hasResult  = (slot.winner_team_id ?? null) !== null
-  const canPick    = !slotLocked && !hasResult && isReal(slot.home) && isReal(slot.away)
+  const canPick    = !slotLocked && isReal(slot.home) && isReal(slot.away)
 
   return (
     <div className={cn(
