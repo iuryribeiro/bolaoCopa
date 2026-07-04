@@ -71,16 +71,11 @@ export function mapFDMatchToSupabase(match: FDMatch) {
       // API forneceu o placar dos 90 min explicitamente
       homeScore = reg.home
       awayScore = reg.away
-    } else if (status === 'PEN') {
-      // Nos pênaltis o jogo estava empatado — fullTime é o placar empatado (90+120 min, sem gols de ET)
-      homeScore = match.score.fullTime.home
-      awayScore = match.score.fullTime.away
-    } else if (status === 'AET') {
-      // Prorrogação: fullTime pode incluir gol da ET.
-      // Usamos fullTime porque não há outro campo disponível;
-      // se o site passar a receber regularTime, este bloco ficará inativo.
-      homeScore = match.score.fullTime.home
-      awayScore = match.score.fullTime.away
+    } else if (status === 'PEN' || status === 'AET') {
+      // regularTime não disponível: não temos como saber o placar dos 90 min.
+      // Retornamos null para que o sync preserve o placar já no banco (inserido manualmente).
+      homeScore = null
+      awayScore = null
     } else {
       // FT normal (90 min); fallback para halfTime se fullTime ainda não veio da API
       homeScore = match.score.fullTime.home ?? match.score.halfTime.home

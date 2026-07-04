@@ -130,11 +130,15 @@ export async function POST(request: Request) {
         let upsertError: unknown = null
 
         if (isFinishedNoScore) {
-          // API retornou FINISHED mas sem placar ainda (delay do free tier).
-          // Só atualiza status/metadata — preserva placar já existente no banco.
+          // Sem placar na API (AET/PEN sem regularTime, ou delay do free tier).
+          // Preserva o placar do banco mas atualiza status e winner_team_id.
           const { error } = await adminSupabase
             .from('matches')
-            .update({ status: matchData.status, last_synced_at: matchData.last_synced_at })
+            .update({
+              status: matchData.status,
+              winner_team_id: matchData.winner_team_id,
+              last_synced_at: matchData.last_synced_at,
+            })
             .eq('api_fixture_id', fdMatch.id)
           upsertError = error
         } else {
