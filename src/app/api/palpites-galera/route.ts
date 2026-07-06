@@ -8,20 +8,12 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    const { data: rules } = await supabase
-      .from('scoring_rules')
-      .select('prediction_deadline_hours')
-      .eq('is_active', true)
-      .single()
-
-    const deadlineHours = rules?.prediction_deadline_hours ?? 1
-
     const { data: matches } = await supabase
       .from('matches')
       .select('*')
       .order('match_date', { ascending: false })
 
-    const lockedMatches = (matches || []).filter(m => isPredictionLocked(m, deadlineHours))
+    const lockedMatches = (matches || []).filter(m => isPredictionLocked(m, 10))
     const lockedIds = lockedMatches.map(m => m.id)
 
     if (lockedIds.length === 0) {

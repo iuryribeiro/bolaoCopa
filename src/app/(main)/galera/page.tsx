@@ -62,7 +62,7 @@ export default function GaleraPage() {
         <Eye className="w-6 h-6 text-blue-400" />
         <div>
           <h1 className="text-2xl font-bold text-white">Palpites da Galera</h1>
-          <p className="text-sm text-gray-400">Revelados 1h antes de cada jogo</p>
+          <p className="text-sm text-gray-400">Revelados 10 minutos antes de cada jogo</p>
         </div>
       </div>
 
@@ -90,7 +90,7 @@ export default function GaleraPage() {
         <div className="text-center py-16">
           <Clock className="w-12 h-12 mx-auto mb-4 text-gray-600" />
           <p className="text-gray-400">Nenhum jogo disponível ainda</p>
-          <p className="text-sm text-gray-600 mt-1">Os palpites são revelados 1h antes de cada partida</p>
+          <p className="text-sm text-gray-600 mt-1">Os palpites são revelados 10 minutos antes de cada partida</p>
         </div>
       ) : (
         <div className="space-y-3">

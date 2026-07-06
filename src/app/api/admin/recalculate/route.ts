@@ -21,7 +21,7 @@ export async function POST() {
     // Recalcular todos os jogos terminados (fase de grupos + pontuação geral)
     const { data: finishedMatches } = await adminSupabase
       .from('matches')
-      .select('id, stage, winner_team_id, status')
+      .select('id, stage, winner_team_id, status, home_team_id, away_team_id')
       .in('status', ['FT', 'AET', 'PEN', 'AWD'])
 
     const { data: rules } = await adminSupabase
@@ -40,7 +40,12 @@ export async function POST() {
           ? (rules?.finalist_points ?? 2)
           : (rules?.knockout_advance_points ?? 1)
 
+        const losingTeamId = match.home_team_id === match.winner_team_id
+          ? match.away_team_id
+          : match.home_team_id
+
         await Promise.all([
+          // Score por UUID real
           adminSupabase.from('knockout_predictions')
             .update({ is_correct: true, points: stagePoints, updated_at: new Date().toISOString() })
             .eq('match_reference', match.id)
@@ -49,6 +54,15 @@ export async function POST() {
             .update({ is_correct: false, points: 0, updated_at: new Date().toISOString() })
             .eq('match_reference', match.id)
             .neq('predicted_team_id', match.winner_team_id),
+          // Score por referência virtual (salvas antes dos jogos serem definidos)
+          adminSupabase.from('knockout_predictions')
+            .update({ is_correct: true, points: stagePoints, updated_at: new Date().toISOString() })
+            .like('match_reference', `virtual-${match.stage}-%`)
+            .eq('predicted_team_id', match.winner_team_id),
+          adminSupabase.from('knockout_predictions')
+            .update({ is_correct: false, points: 0, updated_at: new Date().toISOString() })
+            .like('match_reference', `virtual-${match.stage}-%`)
+            .eq('predicted_team_id', losingTeamId),
         ])
         knockoutCount++
       }

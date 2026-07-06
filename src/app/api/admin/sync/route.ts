@@ -170,7 +170,12 @@ export async function POST(request: Request) {
               const stagePoints = matchData.stage === 'Semi-finals'
                 ? (rules?.finalist_points ?? 2)
                 : (rules?.knockout_advance_points ?? 1)
+              const losingTeamId = matchData.home_team_id === matchData.winner_team_id
+                ? matchData.away_team_id
+                : matchData.home_team_id
+
               await Promise.all([
+                // Score por UUID real
                 adminSupabase.from('knockout_predictions')
                   .update({ is_correct: true, points: stagePoints, updated_at: new Date().toISOString() })
                   .eq('match_reference', match.id)
@@ -179,6 +184,15 @@ export async function POST(request: Request) {
                   .update({ is_correct: false, points: 0, updated_at: new Date().toISOString() })
                   .eq('match_reference', match.id)
                   .neq('predicted_team_id', matchData.winner_team_id),
+                // Score por referência virtual (salvas antes dos jogos serem definidos)
+                adminSupabase.from('knockout_predictions')
+                  .update({ is_correct: true, points: stagePoints, updated_at: new Date().toISOString() })
+                  .like('match_reference', `virtual-${matchData.stage}-%`)
+                  .eq('predicted_team_id', matchData.winner_team_id),
+                adminSupabase.from('knockout_predictions')
+                  .update({ is_correct: false, points: 0, updated_at: new Date().toISOString() })
+                  .like('match_reference', `virtual-${matchData.stage}-%`)
+                  .eq('predicted_team_id', losingTeamId),
               ])
             }
             await adminSupabase.rpc('recalculate_match_points', { p_match_id: match.id })
