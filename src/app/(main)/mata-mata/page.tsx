@@ -118,14 +118,42 @@ function sortByFixtureId(matches: Match[]): Match[] {
   return [...matches].sort((a, b) => a.api_fixture_id - b.api_fixture_id)
 }
 
-function sortByDate(matches: Match[]): Match[] {
-  return [...matches].sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime())
+// Ordena matches reais de acordo com a posição correta no bracket, usando os times
+// vencedores do estágio anterior para identificar qual jogo vai para qual slot.
+// Isso evita dependência na ordem do fixture_id da API (que pode não seguir o bracket).
+function sortByBracket(
+  matches: Match[],
+  prevSlots: BracketSlot[],
+  pairs: [number, number][],
+): Match[] {
+  const result: Array<Match | null> = new Array(pairs.length).fill(null)
+  const used = new Set<string>()
+
+  for (let idx = 0; idx < pairs.length; idx++) {
+    const [i, j] = pairs[idx]
+    const wI = prevSlots[i]?.winner_team_id
+    const wJ = prevSlots[j]?.winner_team_id
+    if (!wI || !wJ) continue
+
+    const found = matches.find(
+      m => !used.has(m.id) &&
+        ((m.home_team_id === wI && m.away_team_id === wJ) ||
+         (m.home_team_id === wJ && m.away_team_id === wI))
+    )
+    if (found) { result[idx] = found; used.add(found.id) }
+  }
+
+  // Slots sem match identificado: preenche pelo fixture_id
+  const remaining = sortByFixtureId(matches.filter(m => !used.has(m.id)))
+  let ri = 0
+  for (let i = 0; i < result.length; i++) {
+    if (!result[i] && ri < remaining.length) result[i] = remaining[ri++]
+  }
+  return result.filter(Boolean) as Match[]
 }
 
-function fromActual(matches: Match[], stage: Stage, labels: string[]): BracketSlot[] {
-  // R32 usa api_fixture_id (ordem oficial do bracket FIFA); demais fases usam data
-  const sorted = stage === 'Round of 32' ? sortByFixtureId(matches) : sortByDate(matches)
-  return sorted.map((m, i) => ({
+function toSlots(matches: Match[], stage: Stage, labels: string[]): BracketSlot[] {
+  return matches.map((m, i) => ({
     ref: m.id, stage, label: labels[i] ?? `#${i+1}`,
     home: teamOf(m, 'home'), away: teamOf(m, 'away'),
     match_date: m.match_date,
@@ -134,17 +162,45 @@ function fromActual(matches: Match[], stage: Stage, labels: string[]): BracketSl
   }))
 }
 
+function fromActual(matches: Match[], stage: Stage, labels: string[]): BracketSlot[] {
+  return toSlots(sortByFixtureId(matches), stage, labels)
+}
+
+function fromActualBracket(
+  matches: Match[], stage: Stage, labels: string[],
+  prevSlots: BracketSlot[], pairs: [number, number][],
+): BracketSlot[] {
+  return toSlots(sortByBracket(matches, prevSlots, pairs), stage, labels)
+}
+
 function fromPicks(
   stage: Stage,
   pairs: [number, number][],
   prev: BracketSlot[],
   picks: Map<string, TeamOption>,
   labels: string[],
+  prevStage?: Stage,   // estágio anterior — usado para buscar picks pelo ref virtual antigo
 ): BracketSlot[] {
+  // Dado um slot do estágio anterior e seu índice, retorna o time que avança.
+  // Prioridade: (1) vencedor real, (2) pick pelo ref atual, (3) pick pelo ref virtual antigo.
+  // O fallback virtual é necessário quando o estágio anterior virou fromActual (UUID refs)
+  // mas os picks ainda estão salvos com os refs virtuais originais.
+  const advance = (slot: BracketSlot | undefined, slotIdx: number): TeamOption | null => {
+    if (!slot) return null
+    if (slot.winner_team_id) {
+      return (slot.home?.id === slot.winner_team_id ? slot.home : slot.away) ?? null
+    }
+    const byRef = picks.get(slot.ref)
+    if (byRef) return byRef
+    if (prevStage && !slot.ref.startsWith('virtual-')) {
+      return picks.get(`virtual-${prevStage}-${slotIdx}`) ?? null
+    }
+    return null
+  }
   return pairs.map(([i, j], idx) => ({
     ref: `virtual-${stage}-${idx}`, stage, label: labels[idx] ?? `#${idx+1}`,
-    home: prev[i] ? (picks.get(prev[i].ref) ?? null) : null,
-    away: prev[j] ? (picks.get(prev[j].ref) ?? null) : null,
+    home: advance(prev[i], i),
+    away: advance(prev[j], j),
   }))
 }
 
@@ -168,26 +224,38 @@ function buildBracket(actualMatches: Match[], picks: Map<string, TeamOption>): R
     : []
 
   const r16: BracketSlot[] = stageReady('Round of 16')
-    ? fromActual(real('Round of 16'), 'Round of 16', R16_LABELS)
-    : r32.length > 0 ? fromPicks('Round of 16', OITAVAS_PAIRS, r32, picks, R16_LABELS) : []
+    ? (r32.length === 16
+        ? fromActualBracket(real('Round of 16'), 'Round of 16', R16_LABELS, r32, OITAVAS_PAIRS)
+        : fromActual(real('Round of 16'), 'Round of 16', R16_LABELS))
+    : r32.length > 0 ? fromPicks('Round of 16', OITAVAS_PAIRS, r32, picks, R16_LABELS, 'Round of 32') : []
 
   const qf: BracketSlot[] = stageReady('Quarter-finals')
-    ? fromActual(real('Quarter-finals'), 'Quarter-finals', QF_LABELS)
-    : r16.length > 0 ? fromPicks('Quarter-finals', QUARTAS_PAIRS, r16, picks, QF_LABELS) : []
+    ? (r16.length === 8
+        ? fromActualBracket(real('Quarter-finals'), 'Quarter-finals', QF_LABELS, r16, QUARTAS_PAIRS)
+        : fromActual(real('Quarter-finals'), 'Quarter-finals', QF_LABELS))
+    : r16.length > 0 ? fromPicks('Quarter-finals', QUARTAS_PAIRS, r16, picks, QF_LABELS, 'Round of 16') : []
 
   const sf: BracketSlot[] = stageReady('Semi-finals')
-    ? fromActual(real('Semi-finals'), 'Semi-finals', SF_LABELS)
-    : qf.length > 0 ? fromPicks('Semi-finals', SEMIS_PAIRS, qf, picks, SF_LABELS) : []
+    ? (qf.length === 4
+        ? fromActualBracket(real('Semi-finals'), 'Semi-finals', SF_LABELS, qf, SEMIS_PAIRS)
+        : fromActual(real('Semi-finals'), 'Semi-finals', SF_LABELS))
+    : qf.length > 0 ? fromPicks('Semi-finals', SEMIS_PAIRS, qf, picks, SF_LABELS, 'Quarter-finals') : []
 
   const third: BracketSlot[] = stageReady('3rd Place Final')
     ? fromActual(real('3rd Place Final'), '3rd Place Final', ['3º'])
     : sf.length >= 2 ? [(() => {
-        const p0 = picks.get(sf[0].ref) ?? null
-        const p1 = picks.get(sf[1].ref) ?? null
+        const loser = (slot: BracketSlot): TeamOption | null => {
+          if (slot.winner_team_id) {
+            return (slot.home?.id === slot.winner_team_id ? slot.away : slot.home) ?? null
+          }
+          const p = picks.get(slot.ref) ?? null
+          if (!p) return null
+          return p.id === slot.home?.id ? slot.away : slot.home
+        }
         return {
           ref: 'virtual-3rd-0', stage: '3rd Place Final' as Stage, label: '3º Lugar',
-          home: p0 ? (p0.id === sf[0].home?.id ? sf[0].away : sf[0].home) : null,
-          away: p1 ? (p1.id === sf[1].home?.id ? sf[1].away : sf[1].home) : null,
+          home: loser(sf[0]),
+          away: loser(sf[1]),
         }
       })()] : []
 
@@ -250,7 +318,25 @@ export default function MataMataPage() {
   const [galeraLoaded, setGaleraLoaded]   = useState(false)
   const [resetting, setResetting]         = useState(false)
 
-  const bracket = useMemo(() => buildBracket(actualMatches, picks), [actualMatches, picks])
+  const { bracket, effectivePicks } = useMemo(() => {
+    const b = buildBracket(actualMatches, picks)
+
+    // Quando um estágio vira fromActual, os slots passam a ter refs UUID.
+    // Os picks do usuário estão salvos com refs virtuais (virtual-Stage-N).
+    // Aqui adicionamos entradas UUID→pick para que o MatchCard encontre o pick
+    // mesmo depois da transição virtual → real.
+    const ep = new Map(picks)
+    const realStages: Stage[] = ['Round of 16', 'Quarter-finals', 'Semi-finals', 'Final']
+    for (const stage of realStages) {
+      b[stage].forEach((slot, idx) => {
+        if (!slot.ref.startsWith('virtual-')) {
+          const vPick = picks.get(`virtual-${stage}-${idx}`)
+          if (vPick && !ep.has(slot.ref)) ep.set(slot.ref, vPick)
+        }
+      })
+    }
+    return { bracket: b, effectivePicks: ep }
+  }, [actualMatches, picks])
 
   useEffect(() => {
     ;(async () => {
@@ -413,7 +499,7 @@ export default function MataMataPage() {
             <>
               <BracketView
                 r32={r32} r16={r16} qf={qf} sf={sf} fin={fin} trd={trd}
-                picks={picks} locked={locked} savingRef={savingRef} onPick={handlePick}
+                picks={effectivePicks} locked={locked} savingRef={savingRef} onPick={handlePick}
               />
 
               <div className="space-y-2 mt-2">
