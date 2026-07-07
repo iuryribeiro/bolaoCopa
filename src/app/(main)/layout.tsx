@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { Navigation } from '@/components/layout/Navigation'
 import { MobileHeader } from '@/components/layout/MobileHeader'
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal'
-import CometEffect from '@/components/CometEffect'
+import CR7Effect from '@/components/CR7Effect'
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -30,7 +30,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
           </div>
         </main>
         <OnboardingModal />
-        <CometEffect />
+        <CR7Effect />
       </div>
     </div>
   )
