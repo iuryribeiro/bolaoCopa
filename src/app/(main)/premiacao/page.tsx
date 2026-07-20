@@ -4,10 +4,20 @@ import { Card } from '@/components/ui/Card'
 import { Trophy, Medal, Users, DollarSign, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export const revalidate = 60
+export const revalidate = 0
 
 const ENTRY_FEE = 100
 const PRIZE_SPLIT = [0.60, 0.25, 0.15]
+
+function sortByRanking<T extends { total_points: number; exact_scores: number; correct_winners: number; name: string }>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    if (b.total_points !== a.total_points) return b.total_points - a.total_points
+    const aGames = (a.exact_scores || 0) + (a.correct_winners || 0)
+    const bGames = (b.exact_scores || 0) + (b.correct_winners || 0)
+    if (bGames !== aGames) return bGames - aGames
+    return a.name.localeCompare(b.name, 'pt-BR')
+  })
+}
 
 export default async function PremiacaoPage() {
   const supabase = await createClient()
@@ -15,20 +25,19 @@ export default async function PremiacaoPage() {
   const [profilesRes, rankingRes] = await Promise.all([
     supabase
       .from('user_profiles')
-      .select('user_id, name, avatar_url, total_points, payment_confirmed')
-      .order('total_points', { ascending: false }),
+      .select('user_id, name, avatar_url, total_points, exact_scores, correct_winners, payment_confirmed'),
     supabase
       .from('user_profiles')
       .select('user_id, name, avatar_url, total_points, exact_scores, correct_winners')
-      .eq('payment_confirmed', true)
-      .order('total_points', { ascending: false })
-      .limit(10),
+      .eq('payment_confirmed', true),
   ])
 
-  const allProfiles = profilesRes.data || []
+  const allProfiles = sortByRanking(
+    (profilesRes.data || []).map(p => ({ ...p, exact_scores: p.exact_scores ?? 0, correct_winners: p.correct_winners ?? 0 }))
+  )
   const confirmed = allProfiles.filter(p => p.payment_confirmed)
   const pending = allProfiles.filter(p => !p.payment_confirmed)
-  const ranking = rankingRes.data || []
+  const ranking = sortByRanking(rankingRes.data || []).slice(0, 10)
 
   const totalPool = confirmed.length * ENTRY_FEE
   const prizes = PRIZE_SPLIT.map(pct => Math.floor(totalPool * pct))

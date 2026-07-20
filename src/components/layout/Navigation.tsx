@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Calendar, Star, Trophy, Eye, GitBranch,
-  Swords, Settings, LogOut, Medal, TrendingUp
+  Swords, Settings, LogOut, Medal, TrendingUp, Crown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -24,6 +24,7 @@ const navItems = [
   { href: '/mata-mata',     icon: GitBranch,       label: 'Mata-mata',    mobileLabel: 'Mata-mata' },
   { href: '/artilheiros',   icon: Swords,          label: 'Artilheiros',  mobileLabel: 'Gols'      },
   { href: '/premiacao',     icon: Medal,           label: 'Premiação',    mobileLabel: 'Prêmio'   },
+  { href: '/homenagem',    icon: Crown,           label: 'Campeão',      mobileLabel: 'Campeão'  },
 ]
 
 interface NavigationProps {

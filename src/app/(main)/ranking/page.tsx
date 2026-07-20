@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Trophy, Users, Star } from 'lucide-react'
 import type { RankingEntry } from '@/types'
 
-export const revalidate = 60
+export const revalidate = 0
 
 export default async function RankingPage() {
   const supabase = await createClient()
@@ -13,15 +13,20 @@ export default async function RankingPage() {
   const { data: rankingData } = await supabase
     .from('user_profiles')
     .select('user_id, name, avatar_url, total_points, exact_scores, correct_winners, bonus_points')
-    .order('total_points', { ascending: false })
-    .order('exact_scores', { ascending: false })
-    .order('name', { ascending: true })
 
-  const ranking: RankingEntry[] = (rankingData || []).map((u, i) => ({
-    position: i + 1,
-    ...u,
-    predictions_count: 0,
-  }))
+  const ranking: RankingEntry[] = (rankingData || [])
+    .sort((a, b) => {
+      if (b.total_points !== a.total_points) return b.total_points - a.total_points
+      const aGames = (a.exact_scores || 0) + (a.correct_winners || 0)
+      const bGames = (b.exact_scores || 0) + (b.correct_winners || 0)
+      if (bGames !== aGames) return bGames - aGames
+      return a.name.localeCompare(b.name, 'pt-BR')
+    })
+    .map((u, i) => ({
+      position: i + 1,
+      ...u,
+      predictions_count: 0,
+    }))
 
   const myPosition = ranking.findIndex(r => r.user_id === user?.id) + 1
   const myEntry = ranking.find(r => r.user_id === user?.id)

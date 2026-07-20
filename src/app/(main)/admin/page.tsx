@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import {
   Settings, RefreshCw, BarChart3, Sliders, CheckCircle,
-  XCircle, Clock, Lock, Unlock, AlertTriangle, Zap, Database, Megaphone, DollarSign
+  XCircle, Clock, Lock, Unlock, AlertTriangle, Zap, Database, Megaphone, DollarSign, Swords
 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -80,17 +80,32 @@ export default function AdminPage() {
   const [usageHistory, setUsageHistory] = useState<UsageHistory[]>([])
   const [loading, setLoading] = useState(true)
 
+  interface TopScorerCandidate {
+    scorer_player_id: string
+    player_name: string
+    team_name: string | null
+    team_logo: string | null
+    goals_scored: number
+    count: number
+    is_winner: boolean
+  }
+  const [topScorerCandidates, setTopScorerCandidates] = useState<TopScorerCandidate[]>([])
+  const [scoringArtilheiro, setScoringArtilheiro] = useState(false)
+  const [artilheiroMsg, setArtilheiroMsg] = useState('')
+  const [artilheiroError, setArtilheiroError] = useState(false)
+
   useEffect(() => {
     fetchData()
   }, [])
 
   const fetchData = async () => {
     try {
-      const [logsRes, settingsRes, usageRes, paymentsRes] = await Promise.all([
+      const [logsRes, settingsRes, usageRes, paymentsRes, artRes] = await Promise.all([
         fetch('/api/admin/logs').catch(() => null),
         fetch('/api/admin/settings').catch(() => null),
         fetch('/api/admin/usage').catch(() => null),
         fetch('/api/admin/payments').catch(() => null),
+        fetch('/api/admin/score-artilheiro').catch(() => null),
       ])
 
       if (logsRes?.ok) {
@@ -116,6 +131,11 @@ export default function AdminPage() {
         setParticipants(d.participants || [])
         setMigrationNeeded(!!d.migration_needed)
         if (d.error && !(d.participants?.length)) setPaymentError(d.error)
+      }
+
+      if (artRes?.ok) {
+        const d = await artRes.json().catch(() => ({}))
+        setTopScorerCandidates(d.players || [])
       }
     } finally {
       setLoading(false)
@@ -255,6 +275,30 @@ export default function AdminPage() {
       })
     } finally {
       setSavingRules(false)
+    }
+  }
+
+  const handleScoreArtilheiro = async (scorer_player_id: string, player_name: string) => {
+    if (!confirm(`Confirmar "${player_name}" como artilheiro da Copa? Isso vai atribuir pontos para quem acertou.`)) return
+    setScoringArtilheiro(true)
+    setArtilheiroMsg('')
+    setArtilheiroError(false)
+    try {
+      const res = await fetch('/api/admin/score-artilheiro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scorer_player_id }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setArtilheiroError(true)
+        setArtilheiroMsg(data.error || 'Erro ao pontuar')
+      } else {
+        setArtilheiroMsg(`✓ ${player_name} marcado como artilheiro! +${data.points_awarded} pts para quem acertou.`)
+        fetchData()
+      }
+    } finally {
+      setScoringArtilheiro(false)
     }
   }
 
@@ -581,6 +625,79 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Pontuar Artilheiro */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Swords className="w-4 h-4 text-yellow-400" />
+            <h2 className="text-sm font-semibold text-white">Pontuar Artilheiro da Copa</h2>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-gray-400">
+            Selecione o artilheiro oficial da Copa para atribuir os pontos a quem acertou.
+          </p>
+
+          {artilheiroMsg && (
+            <div className={cn(
+              'p-3 rounded-lg text-xs border',
+              artilheiroError
+                ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+            )}>
+              {artilheiroMsg}
+            </div>
+          )}
+
+          {topScorerCandidates.length === 0 ? (
+            <p className="text-xs text-gray-500 text-center py-4">Nenhum palpite de artilheiro registrado.</p>
+          ) : (
+            <div className="space-y-2">
+              {topScorerCandidates.map(c => (
+                <div
+                  key={c.scorer_player_id}
+                  className={cn(
+                    'flex items-center gap-3 p-3 rounded-xl border',
+                    c.is_winner
+                      ? 'bg-yellow-500/10 border-yellow-500/30'
+                      : 'bg-white/5 border-white/10'
+                  )}
+                >
+                  {c.team_logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.team_logo} alt="" width={28} height={28} className="object-contain shrink-0" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-white/10 shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-sm font-medium truncate', c.is_winner ? 'text-yellow-400' : 'text-white')}>
+                      {c.player_name}
+                      {c.is_winner && <span className="ml-2 text-xs">✓ Artilheiro</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {c.team_name ?? ''}
+                      {c.goals_scored > 0 ? ` · ⚽ ${c.goals_scored} gols` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-xs text-gray-400">{c.count} palpite{c.count !== 1 ? 's' : ''}</span>
+                    {!c.is_winner && (
+                      <button
+                        onClick={() => handleScoreArtilheiro(c.scorer_player_id, c.player_name)}
+                        disabled={scoringArtilheiro}
+                        className="px-3 py-1.5 rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-xs font-medium hover:bg-yellow-500/30 transition-all disabled:opacity-50"
+                      >
+                        {scoringArtilheiro ? '…' : 'Marcar como artilheiro'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Confirmação de pagamentos */}
       <Card>
